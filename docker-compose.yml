@@ -1,0 +1,30 @@
+services:
+  oracle-xe:
+    image: container-registry.oracle.com/database/express:21.3.0-xe
+    container_name: oracle-xe-contable
+    restart: unless-stopped
+    ports:
+      - "1521:1521"   # Listener DB (Power BI y SQL Developer se conectan aquí)
+      - "5500:5500"   # Enterprise Manager Express (opcional)
+      - "8080:8080"   # APEX / ORDS, una vez configurado dentro del contenedor
+    environment:
+      - ORACLE_PWD=${ORACLE_PWD}    # password para SYS, SYSTEM y PDBADMIN
+      - ORACLE_CHARACTERSET=AL32UTF8
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    # --- Límite de memoria aplicado por Docker directamente al contenedor ---
+    # mem_limit: techo duro de RAM física para el proceso.
+    # memswap_limit: techo de RAM + swap combinados. Poniéndolo un poco más
+    # arriba que mem_limit le damos ~1GB de swap de emergencia sin dejarlo
+    # ilimitado (memswap_limit igual a mem_limit desactivaría swap del todo).
+    mem_limit: 3.5g
+    memswap_limit: 4.5g
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PWD}@//localhost:1521/XEPDB1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 8m   # el primer arranque en frío con 3.5GB puede tardar más de lo normal
+
+volumes:
+  oracle-data:

@@ -1,0 +1,38 @@
+# ─── Credenciales y secretos ───────────────────────────────
+.env
+*.env.local
+cwallet.sso
+ewallet.p12
+ewallet.pem
+*.jks
+ 
+# ─── Datos y volúmenes de Oracle ───────────────────────────
+oracle-data/
+*.dbf
+*.log
+*.trc
+ 
+# ─── APEX: exports y artefactos generados ──────────────────
+# El export de la APLICACIÓN (carpeta f<ID>_app/ o el .sql completo)
+# SÍ se versiona normalmente -> no lo ignores.
+# Lo que sí conviene ignorar son logs/temporales que deja el proceso:
+apex_install.log
+apex_upgrade.log
+apex_export_*.log
+/exports/tmp/
+*.apex.bak
+ 
+# Archivos de configuración de conexión local de SQLcl/SQL Developer
+.sqlcl_history
+sqlnet.ora
+tnsnames.ora
+ 
+# ─── Editor / SO ────────────────────────────────────────────
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+ 
+# ─── Node (si en algún momento personalizás el Universal Theme con npm) ──
+node_modules/
+npm-debug.log
