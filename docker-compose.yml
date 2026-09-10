@@ -6,9 +6,8 @@ services:
     ports:
       - "1521:1521"   # Listener DB (Power BI y SQL Developer se conectan aquí)
       - "5500:5500"   # Enterprise Manager Express (opcional)
-      - "8080:8080"   # APEX / ORDS, una vez configurado dentro del contenedor
     environment:
-      - ORACLE_PWD=${ORACLE_PWD}    # password para SYS, SYSTEM y PDBADMIN
+      - ORACLE_PWD=${ORACLE_PWD}    # definido en el archivo .env (no lo subas a git)
       - ORACLE_CHARACTERSET=AL32UTF8
     volumes:
       - oracle-data:/opt/oracle/oradata
@@ -20,11 +19,40 @@ services:
     mem_limit: 3.5g
     memswap_limit: 4.5g
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PWD}@//localhost:1521/XEPDB1"]
+      test: ["CMD", "bash", "-c", "echo 'select 1 from dual;' | sqlplus -s system/$${ORACLE_PWD}@//localhost:1521/XEPDB1"]
       interval: 30s
       timeout: 10s
       retries: 10
       start_period: 8m   # el primer arranque en frío con 3.5GB puede tardar más de lo normal
 
+  ords:
+    image: container-registry.oracle.com/database/ords:latest
+    container_name: apex-ords
+    restart: "no"   # temporalmente sin auto-restart, para diagnosticar fallos sin que el loop pise la evidencia
+    depends_on:
+      oracle-xe:
+        condition: service_healthy
+    ports:
+      - "8080:8080"   # APEX se sirve por acá: http://localhost:8080/ords
+    environment:
+      # El script arma la conexión él solo como: sys/$ORACLE_PWD@$CONN_STRING
+      # Por eso CONN_STRING va SOLO con host:puerto/servicio, sin usuario ni password.
+      - CONN_STRING=oracle-xe:1521/XEPDB1
+      - ORACLE_PWD=${ORACLE_PWD}
+      # Password para el usuario interno ORDS_PUBLIC_USER que ORDS crea en la base
+      - ORACLE_USER_PWD=${ORDS_PUBLIC_PWD}
+      # Heap de Java explícito: la JVM autodetectó mal el límite del cgroup
+      # y se quedó sin memoria cargando módulos internos (OutOfMemoryError
+      # real que vimos en el log). Fijamos el heap a mano.
+      - JAVA_TOOL_OPTIONS=-Xmx1024m -Xms256m
+    volumes:
+      - ords-config:/etc/ords/config
+      - ./apex:/opt/oracle/apex
+    # Límite subido de 700m a 1.5g: la JVM necesita más para cargar
+    # todos sus módulos internos al arrancar.
+    mem_limit: 2g
+    memswap_limit: 2.5g
+
 volumes:
   oracle-data:
+  ords-config:

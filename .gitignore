@@ -36,3 +36,6 @@ desktop.ini
 # ─── Node (si en algún momento personalizás el Universal Theme con npm) ──
 node_modules/
 npm-debug.log
+
+# ------ Apex Build Carpet ----#
+apex/
