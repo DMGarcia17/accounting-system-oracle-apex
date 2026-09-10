@@ -1,11 +1,16 @@
 -- ============================================================
--- 11_vw_account_balance.sql
+-- 11_vw_account_balance.sql  (CORREGIDO)
 -- Depende de: 10_mv_account_balances.sql, 06_gl_account.sql,
 --             02_accounting_period.sql
 -- Vista NORMAL (no materializada) que le aplica a los totales
 -- crudos de la vista materializada la regla de naturaleza:
 --   - Cuenta Deudora (normal_balance='D'): saldo = Debit - Credit
 --   - Cuenta Acreedora (normal_balance='C'): saldo = Credit - Debit
+--
+-- El filtro status = 'ACTIVE' vive ACÁ (no en la vista materializada,
+-- ver nota en 10_mv_account_balances.sql sobre el ORA-12033) -- así
+-- los asientos REVERSADOS quedan excluidos de los saldos que ve
+-- el usuario, sin romper el FAST REFRESH.
 --
 -- Expone DOS columnas de saldo:
 --   period_balance      -> solo el movimiento de ESE período
@@ -34,6 +39,7 @@ WITH base AS (
     FROM mv_account_balances mv
     JOIN accounting_period p ON p.id = mv.period_id
     JOIN gl_account         a ON a.id = mv.account_id
+    WHERE mv.status = 'ACTIVE'
 )
 SELECT
     company_id,
@@ -52,4 +58,4 @@ SELECT
 FROM base;
 
 COMMENT ON TABLE vw_account_balance IS
-    'Saldos por cuenta aplicando naturaleza: period_balance para Estado de Resultados, accumulated_balance para Balance General';
+    'Saldos por cuenta aplicando naturaleza: period_balance para Estado de Resultados, accumulated_balance para Balance General. Filtra status=ACTIVE.';

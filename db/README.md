@@ -19,14 +19,42 @@ Correr conectado como `CONTA_SCHEMA` en `XEPDB1` (no como `sys`), en este orden 
 7. `07_journal_entry.sql`
 8. `08_journal_entry_line.sql`
 9. `09_mv_log_journal_entry_line.sql`
+9b. `09b_mv_log_journal_entry.sql` (log adicional requerido por el JOIN, ver nota abajo)
 10. `10_mv_account_balances.sql`
 11. `11_vw_account_balance.sql`
 12. `12_alter_company_costing_method.sql`
 13. `13_inventory_item.sql`
 14. `14_inventory_movement.sql`
 15. `15_vw_inventory_balance.sql`
+16. `16_alter_journal_entry_draft.sql`
+17. `17_alter_journal_entry_reversal.sql`
+18. `18_permission.sql`
+19. `19_role_permission.sql`
+20. `20_journal_entry_template.sql`
+21. `21_journal_entry_template_line.sql`
+22. `22_alter_gl_account_current_classification.sql`
 
 El orden respeta las dependencias de llaves foráneas y de vistas materializadas.
+
+**Nota sobre `09b`**: Oracle exige un materialized view log en cada tabla que participa
+en el `JOIN` de una vista materializada con `FAST REFRESH`, no solo en la tabla de
+detalle. `mv_account_balances` hace `JOIN` entre `journal_entry_line` y `journal_entry`,
+así que ambas necesitan su propio log (09 y 09b respectivamente) — esto no era evidente
+hasta que Oracle lo exigió en tiempo de ejecución (`ORA-23413`).
+
+**Nota sobre `10` y `11`**: la primera versión de `mv_account_balances` tenía un
+`WHERE e.status = 'ACTIVE'`, pero Oracle no permite `FAST REFRESH` en un `JOIN` cuando
+hay un filtro que no es parte de la condición de unión (`ORA-12033`). Se corrigió
+sacando el filtro de la vista materializada (agregando `status` al `GROUP BY` en su
+lugar) y aplicándolo en `vw_account_balance`, donde un `WHERE` normal no tiene esa
+restricción.
+
+**Causa raíz real del `ORA-12033`** (confirmada, no solo la primera hipótesis): el
+`JOIN` usa la llave primaria de `journal_entry` (`e.id = l.journal_entry_id`). Para que
+Oracle permita `FAST REFRESH` sobre un `JOIN` así, el materialized view log de la tabla
+cuya llave primaria se usa en la condición de unión necesita la opción `WITH PRIMARY KEY`
+explícita, no alcanza con `WITH ROWID` solo. Por eso `09b_mv_log_journal_entry.sql`
+tiene `WITH ROWID, PRIMARY KEY, SEQUENCE (...)`.
 
 ## Decisiones de diseño (para no repreguntarlas después)
 
@@ -47,9 +75,32 @@ El orden respeta las dependencias de llaves foráneas y de vistas materializadas
 
 ## Pendiente para las próximas sesiones
 
-- **Confirmar el método de costeo del Kardex** (Promedio vs PEPS) con un ejemplo de clase que tenga dos compras a precios distintos.
-- Paquete `PKG_JOURNAL_ENTRY`: validación de cuadre (Debit=Credit), validación de cuenta de detalle (`is_posting_account`), asignación de correlativo, control de período abierto, creación de asientos.
-- Paquete `PKG_INVENTORY`: registrar movimientos de Kardex en conjunto con cada asiento de compra/venta, calcular el costo unitario de las salidas según `inventory_costing_method`.
+- **Confirmar el método de costeo del Kardex** (Promedio vs PEPS) con un ejemplo de clase que tenga dos compras a precios distintos. `pkg_inventory` está escrito asumiendo Promedio Ponderado.
+
+## Paquetes PL/SQL (carpeta packages/, ver README raíz)
+
+Todos corren `CREATE OR REPLACE`, se pueden re-ejecutar sin problema.
+
+**Orden de compilación importante**: `pkg_journal_entry_body` llama a
+`pkg_inventory.reverse_movement` (para reversar movimientos de Kardex
+vinculados a un asiento anulado), así que **`pkg_inventory` tiene que
+compilarse ANTES que `pkg_journal_entry_body`**, o falla con "no existe
+pkg_inventory.reverse_movement":
+
+1. `pkg_inventory_spec.sql` → `pkg_inventory_body.sql`
+2. `pkg_journal_entry_spec.sql` → `pkg_journal_entry_body.sql`
+3. `pkg_period_close_spec.sql` → `pkg_period_close_body.sql` (depende de pkg_journal_entry)
+4. `pkg_entry_template_spec.sql` → `pkg_entry_template_body.sql` (depende de pkg_journal_entry)
+5. `pkg_user_security_spec.sql` → `pkg_user_security_body.sql` (independiente de los demás)
+
+Qué hace cada uno:
+- `pkg_inventory`: movimientos de Kardex (compras, ventas, devoluciones, conteo, reverso de movimientos).
+- `pkg_journal_entry`: crear/completar/postear/descartar/anular asientos.
+- `pkg_period_close`: cierre y apertura de ejercicio, vista previa de resultado.
+- `pkg_entry_template`: instanciar asientos desde plantillas recurrentes.
+- `pkg_user_security`: usuarios, roles, permisos, autenticación para APEX.
+
+Pendiente: probar todo con Claude Code de punta a punta antes de tocar APEX.
 - Paquete/proceso de cierre de ejercicio: cálculo de costo de ventas, generación automática del asiento de cierre, generación del asiento de apertura del siguiente período.
 - Esquema de autenticación personalizado en APEX (función de validación contra `user_account`, hash de password).
 - Esquemas de autorización en APEX ligados a `role`/`user_role` (qué botones/páginas ve cada rol).
