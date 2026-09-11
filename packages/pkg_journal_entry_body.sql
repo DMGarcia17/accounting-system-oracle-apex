@@ -246,6 +246,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_journal_entry AS
         v_orig_status    journal_entry.status%TYPE;
         v_new_period_id  accounting_period.id%TYPE;
         v_new_entry_id   journal_entry.id%TYPE;
+        v_test  inventory_movement.id%TYPE;
     BEGIN
         BEGIN
             SELECT company_id, status INTO v_company_id, v_orig_status
@@ -311,7 +312,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_journal_entry AS
         FOR inv_rec IN (
             SELECT id FROM inventory_movement WHERE journal_entry_id = p_entry_id
         ) LOOP
-            pkg_inventory.reverse_movement(
+            v_test:=pkg_inventory.reverse_movement(
                 p_movement_id      => inv_rec.id,
                 p_movement_date    => p_reversal_date,
                 p_journal_entry_id => v_new_entry_id

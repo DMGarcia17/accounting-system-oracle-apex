@@ -11,8 +11,14 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
     -- tamaño de la columna password_hash.
     ------------------------------------------------------------
     FUNCTION hash_password(p_password IN VARCHAR2, p_salt IN VARCHAR2) RETURN VARCHAR2 IS
+        v_hash VARCHAR2(64);
     BEGIN
-        RETURN RAWTOHEX(STANDARD_HASH(p_password || p_salt, 'SHA256'));
+        -- STANDARD_HASH es una función SQL, no se puede invocar en una
+        -- asignación PL/SQL pura: necesita correr dentro de un SELECT.
+        SELECT RAWTOHEX(STANDARD_HASH(p_password || p_salt, 'SHA256'))
+          INTO v_hash
+          FROM DUAL;
+        RETURN v_hash;
     END hash_password;
 
 
@@ -55,6 +61,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
         v_current_hash user_account.password_hash%TYPE;
         v_salt         user_account.password_salt%TYPE;
         v_new_salt     VARCHAR2(32);
+        v_new_hash     VARCHAR2(64);
     BEGIN
         BEGIN
             SELECT password_hash, password_salt INTO v_current_hash, v_salt
@@ -69,8 +76,10 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
         END IF;
 
         v_new_salt := RAWTOHEX(SYS_GUID());
+        v_new_hash := hash_password(p_new_password, v_new_salt);  -- calculado ANTES del UPDATE
+
         UPDATE user_account
-           SET password_hash = hash_password(p_new_password, v_new_salt),
+           SET password_hash = v_new_hash,
                password_salt = v_new_salt
          WHERE id = p_user_id;
     END change_password;
@@ -83,6 +92,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
     )
     IS
         v_new_salt VARCHAR2(32);
+        v_new_hash VARCHAR2(64);
         v_exists   NUMBER;
     BEGIN
         SELECT COUNT(*) INTO v_exists FROM user_account WHERE id = p_user_id;
@@ -91,8 +101,10 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
         END IF;
 
         v_new_salt := RAWTOHEX(SYS_GUID());
+        v_new_hash := hash_password(p_new_password, v_new_salt);  -- calculado ANTES del UPDATE
+
         UPDATE user_account
-           SET password_hash = hash_password(p_new_password, v_new_salt),
+           SET password_hash = v_new_hash,
                password_salt = v_new_salt
          WHERE id = p_user_id;
     END reset_password;
