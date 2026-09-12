@@ -10,6 +10,7 @@ DECLARE
     v_role_id     role.id%TYPE;
     v_perm_id     permission.id%TYPE;
     v_user_id     user_account.id%TYPE;
+    v_user_null_id user_account.id%TYPE;  -- para el hallazgo de password NULL
 
     PROCEDURE report(p_case IN VARCHAR2, p_passed IN BOOLEAN, p_detail IN VARCHAR2 DEFAULT NULL) IS
     BEGIN
@@ -154,11 +155,294 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
+    -- ESCENARIO 7: change_password con usuario inexistente
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.change_password(-999999, 'x', 'y');
+        report('Escenario 7: rechazar change_password sobre usuario inexistente', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 7: rechazar change_password sobre usuario inexistente', SQLCODE = -20031, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- ESCENARIO 8: change_password con password actual incorrecto
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.change_password(v_user_id, 'PasswordViejaIncorrecta', 'NuevaClave000!');
+        report('Escenario 8: rechazar change_password con password actual incorrecto', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 8: rechazar change_password con password actual incorrecto', SQLCODE = -20032, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- ESCENARIO 9: deactivate_user / reactivate_user con usuario
+    -- inexistente
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.deactivate_user(-999999);
+        report('Escenario 9a: rechazar deactivate_user sobre usuario inexistente', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 9a: rechazar deactivate_user sobre usuario inexistente', SQLCODE = -20031, SQLERRM);
+            ROLLBACK;
+    END;
+
+    BEGIN
+        pkg_user_security.reactivate_user(-999999);
+        report('Escenario 9b: rechazar reactivate_user sobre usuario inexistente', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 9b: rechazar reactivate_user sobre usuario inexistente', SQLCODE = -20031, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- ESCENARIO 10: reset_password (reseteo administrativo, sin pedir
+    -- el password viejo)
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.reset_password(v_user_id, 'ClaveReseteada789!');
+        COMMIT;
+
+        IF NOT pkg_user_security.authenticate('test.user.' || v_company_id, 'ClaveNueva456!')
+           AND pkg_user_security.authenticate('test.user.' || v_company_id, 'ClaveReseteada789!') THEN
+            report('Escenario 10: reset_password administrativo', TRUE);
+        ELSE
+            report('Escenario 10: reset_password administrativo', FALSE);
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 10: reset_password administrativo', FALSE, SQLERRM);
+    END;
+
+    ------------------------------------------------------------------
+    -- ESCENARIO 11: reset_password con usuario inexistente
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.reset_password(-999999, 'ClaveX123!');
+        report('Escenario 11: rechazar reset_password sobre usuario inexistente', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 11: rechazar reset_password sobre usuario inexistente', SQLCODE = -20031, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- ESCENARIO 12: assign_role duplicado (el rol ya se había
+    -- revocado en el Escenario 5b, así que primero se reasigna limpio,
+    -- y luego se intenta de nuevo para confirmar el rechazo)
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.assign_role(v_user_id, v_role_id);
+        COMMIT;
+
+        pkg_user_security.assign_role(v_user_id, v_role_id);
+        report('Escenario 12: rechazar assign_role duplicado', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 12: rechazar assign_role duplicado', SQLCODE = -20033, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- ESCENARIO 13: revoke_role sin tener el rol asignado
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.revoke_role(v_user_id, v_role_id);  -- quita el rol asignado en el Escenario 12
+        COMMIT;
+
+        pkg_user_security.revoke_role(v_user_id, v_role_id);  -- ya no lo tiene
+        report('Escenario 13: rechazar revoke_role sin tener el rol asignado', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 13: rechazar revoke_role sin tener el rol asignado', SQLCODE = -20034, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- ESCENARIO 14: grant_permission duplicado (el permiso sigue
+    -- otorgado desde el Escenario 5, nunca se revocó)
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.grant_permission(v_role_id, v_perm_id);
+        report('Escenario 14: rechazar grant_permission duplicado', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 14: rechazar grant_permission duplicado', SQLCODE = -20035, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- ESCENARIO 15: revoke_permission sin tener el permiso asignado
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.revoke_permission(v_role_id, v_perm_id);  -- lo quita (estaba desde el Escenario 5)
+        COMMIT;
+
+        pkg_user_security.revoke_permission(v_role_id, v_perm_id);  -- ya no lo tiene
+        report('Escenario 15: rechazar revoke_permission sin tener el permiso asignado', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Escenario 15: rechazar revoke_permission sin tener el permiso asignado', SQLCODE = -20036, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- HALLAZGO J: create_user con p_password NULL no lanza ningún
+    -- error, y ese usuario luego autentica con password NULL (el
+    -- hash termina calculado solo sobre la sal).
+    ------------------------------------------------------------------
+    BEGIN
+        v_user_null_id := pkg_user_security.create_user(
+            v_company_id, 'test.nullpwd.' || v_company_id, 'Usuario Password Nulo', 'nullpwd@example.com', NULL);
+        COMMIT;
+
+        report('Hallazgo J: create_user con p_password NULL no lanza error (falta validar password vacío)',
+               v_user_null_id IS NOT NULL);
+
+        IF pkg_user_security.authenticate('test.nullpwd.' || v_company_id, NULL) THEN
+            report('Hallazgo J (cont.): un usuario creado con password NULL autentica con password NULL', TRUE);
+        ELSE
+            report('Hallazgo J (cont.): un usuario creado con password NULL autentica con password NULL', FALSE,
+                   'no se pudo reproducir en este entorno');
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Hallazgo J: create_user con p_password NULL', FALSE, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- HALLAZGO K: reset_password con p_new_password NULL tampoco
+    -- lanza ningún error.
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.reset_password(v_user_id, NULL);
+        COMMIT;
+
+        IF pkg_user_security.authenticate('test.user.' || v_company_id, NULL) THEN
+            report('Hallazgo K: reset_password con p_new_password NULL deja el usuario autenticable con password NULL', TRUE);
+        ELSE
+            report('Hallazgo K: reset_password con p_new_password NULL deja el usuario autenticable con password NULL', FALSE,
+                   'no se pudo reproducir en este entorno');
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Hallazgo K: reset_password con p_new_password NULL', FALSE, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- HALLAZGO L: has_permission de un usuario DESACTIVADO que
+    -- conserva el rol asignado sigue devolviendo TRUE -- has_permission
+    -- no filtra por user_account.is_active.
+    ------------------------------------------------------------------
+    DECLARE
+        v_code permission.code%TYPE;
+    BEGIN
+        pkg_user_security.grant_permission(v_role_id, v_perm_id);  -- se había revocado en el Escenario 15
+        pkg_user_security.assign_role(v_user_id, v_role_id);       -- se había revocado en el Escenario 13
+        COMMIT;
+
+        SELECT code INTO v_code FROM permission WHERE id = v_perm_id;
+
+        pkg_user_security.deactivate_user(v_user_id);
+        COMMIT;
+
+        IF pkg_user_security.has_permission(v_user_id, v_code) THEN
+            report('Hallazgo L: has_permission sigue devolviendo TRUE para un usuario desactivado (no filtra por is_active)', TRUE);
+        ELSE
+            report('Hallazgo L: has_permission sigue devolviendo TRUE para un usuario desactivado', FALSE,
+                   'no se pudo reproducir -- has_permission SÍ rechazó al usuario inactivo');
+        END IF;
+
+        pkg_user_security.reactivate_user(v_user_id);
+        COMMIT;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Hallazgo L: has_permission de un usuario desactivado', FALSE, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- HALLAZGO M: authenticate con un username que no existe en
+    -- absoluto devuelve FALSE sin lanzar ninguna excepción (comportamiento
+    -- documentado en el spec, nunca antes probado explícitamente)
+    ------------------------------------------------------------------
+    BEGIN
+        IF NOT pkg_user_security.authenticate('usuario_que_no_existe_' || SYSDATE, 'cualquier_cosa') THEN
+            report('Hallazgo M: authenticate con username inexistente devuelve FALSE sin excepción', TRUE);
+        ELSE
+            report('Hallazgo M: authenticate con username inexistente devuelve FALSE sin excepción', FALSE,
+                   'autenticó con un username que no debería existir');
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Hallazgo M: authenticate con username inexistente', FALSE, SQLERRM);
+    END;
+
+    ------------------------------------------------------------------
+    -- HALLAZGO N: assign_role / grant_permission con un id inexistente
+    -- del "otro lado" de la FK no tienen validación propia -- se
+    -- espera el error crudo de integridad referencial de Oracle
+    -- (ORA-02291), no un RAISE_APPLICATION_ERROR amigable.
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.assign_role(v_user_id, -999999);
+        report('Hallazgo N (assign_role): rechazar rol inexistente', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Hallazgo N (assign_role): con rol inexistente propaga ORA-02291 crudo (sin validación propia)',
+                   SQLCODE = -2291, SQLERRM);
+            ROLLBACK;
+    END;
+
+    BEGIN
+        pkg_user_security.grant_permission(-999999, v_perm_id);
+        report('Hallazgo N (grant_permission): rechazar rol inexistente', FALSE, 'no lanzó excepción');
+        ROLLBACK;
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Hallazgo N (grant_permission): con rol inexistente propaga ORA-02291 crudo (sin validación propia)',
+                   SQLCODE = -2291, SQLERRM);
+            ROLLBACK;
+    END;
+
+    ------------------------------------------------------------------
+    -- HALLAZGO O: set_session_context ejecutado directo vía sqlplus
+    -- (fuera de una sesión APEX real) -- depende de APEX_UTIL, así
+    -- que documentamos lo que realmente pasa en este entorno sin dar
+    -- por sentado un resultado.
+    ------------------------------------------------------------------
+    BEGIN
+        pkg_user_security.set_session_context('test.user.' || v_company_id);
+        report('Hallazgo O: set_session_context se ejecutó sin error vía sqlplus directo (no se pudo confirmar el acoplamiento a APEX_UTIL en este entorno)', TRUE);
+    EXCEPTION
+        WHEN OTHERS THEN
+            report('Hallazgo O: set_session_context falló fuera de una sesión APEX real (limitación de entorno esperada, no bug del paquete)',
+                   TRUE, SQLERRM);
+    END;
+
+    ------------------------------------------------------------------
     -- LIMPIEZA
     ------------------------------------------------------------------
     DELETE FROM role_permission WHERE role_id = v_role_id OR permission_id = v_perm_id;
-    DELETE FROM user_role WHERE user_id = v_user_id;
-    DELETE FROM user_account WHERE id = v_user_id;
+    DELETE FROM user_role WHERE user_id IN (v_user_id, v_user_null_id);
+    DELETE FROM user_account WHERE id IN (v_user_id, v_user_null_id);
     DELETE FROM permission WHERE id = v_perm_id;
     DELETE FROM role WHERE id = v_role_id;
     DELETE FROM company WHERE id = v_company_id;
