@@ -10,14 +10,18 @@ reprodujo con evidencia real (mensaje de error / valores observados).
 scripts de `test/`, **0 fallos** (cada uno confirmó exactamente lo que debía
 confirmar, sea un comportamiento correcto o un bug).
 
-**Actualización (2026-09-11): los 3 críticos y los 7 altos ya fueron
-corregidos** y verificados en vivo contra la misma base; los escenarios que
-los exponían se reescribieron como regresiones (ahora esperan el
-comportamiento correcto, no el bug). Detalle de cada corrección en
-[✅ Críticos corregidos](#-críticos-corregidos) y
-[✅ Altos corregidos](#-altos-corregidos) más abajo. Los 8 🟡 Medios y los
-riesgos de concurrencia siguen reflejando el estado original de la sesión de
-pruebas y siguen pendientes.
+**Actualización (2026-09-11): los 3 críticos, los 7 altos y 5 de los 8
+medios ya fueron corregidos** y verificados en vivo contra la misma base;
+los escenarios que los exponían se reescribieron como regresiones (ahora
+esperan el comportamiento correcto, no el bug). Detalle de cada corrección
+en [✅ Críticos corregidos](#-críticos-corregidos),
+[✅ Altos corregidos](#-altos-corregidos) y
+[✅ Medios corregidos](#-medios-corregidos) más abajo. De los 8 medios, 3
+quedaron **deliberadamente sin tocar** tras decidirlo con el usuario: el
+costeo FIFO (implementarlo de verdad es la corrección más grande de las 8 —
+se prefirió dejarlo solo documentado por ahora) y los 2 hallazgos que
+resultaron ser características de diseño, no bugs (#16 y #18). Los riesgos
+de concurrencia siguen solo documentados, sin prueba ejecutada.
 
 Convención de severidad: 🔴 Crítico (rompe un flujo real u otro objeto
 documentado) · 🟠 Alto (bug de validación/seguridad real) · 🟡 Medio (diseño
@@ -307,7 +311,88 @@ sin prueba ejecutada (concurrencia) · ℹ️ Nota de entorno (no es bug de cód
 
 ---
 
-## 🟡 Medios
+## ✅ Medios corregidos
+
+Decisiones de producto confirmadas con el usuario antes de corregir (#11,
+#12) y alcance acotado para #13 (ver nota abajo).
+
+### 11. `reverse_entry` permitía reversar un `REVERSAL` (cadena de reversos) — CORREGIDO
+- **Decisión tomada**: bloquear, no permitir encadenar anulaciones. Si un
+  reverso quedó mal, se corrige con un asiento nuevo, no anulando la
+  anulación.
+- **Fix aplicado**: `packages/pkg_journal_entry_body.sql`, `reverse_entry` —
+  se agregó `IF v_orig_type = 'REVERSAL' THEN RAISE_APPLICATION_ERROR(-20021, ...)`.
+- **Test actualizado**: `test/test_pkg_journal_entry.sql` ("Hallazgo B" →
+  regresión que exige `-20021`).
+
+### 12. `reverse_entry` no exigía que la fecha de reverso fuera posterior a la del asiento original — CORREGIDO
+- **Decisión tomada**: exigir que `p_reversal_date >=` la fecha del asiento
+  original.
+- **Fix aplicado**: `packages/pkg_journal_entry_body.sql`, `reverse_entry` —
+  validación `IF p_reversal_date < v_orig_date THEN RAISE_APPLICATION_ERROR(-20022, ...)`.
+- **Test actualizado**: `test/test_pkg_journal_entry.sql` ("Hallazgo C" →
+  regresión que exige `-20022`).
+
+### 13. Inconsistencia de costeo FIFO — alcance acotado, sigue pendiente (decisión consciente)
+- **Decisión tomada con el usuario**: implementar FIFO real (consumir capas
+  de compra por `remaining_quantity` en orden de entrada) es, de las 8
+  correcciones medias, la más grande — se prefirió **dejarla solo
+  documentada** por ahora en vez de apurar una implementación de costeo
+  bajo presión de tiempo. Sigue igual que antes: una empresa en `FIFO`
+  se costea por promedio ponderado sin ningún aviso. Pendiente para una
+  sesión dedicada solo a esto.
+
+### 14. Plantilla con 2+ líneas variables del MISMO lado recibían el mismo monto — CORREGIDO
+- **Aclaración importante**: el caso *soportado* y válido es 1 línea
+  variable en Debe + 1 en Haber (plantilla simétrica, `TPL-VAR-OK`, ambas
+  reciben el mismo `p_variable_amount` a propósito) — eso sigue funcionando
+  igual. El bug real era 2+ variables del **mismo** lado (ej. dos líneas de
+  Debe variables), que recibían el mismo monto sin ningún aviso.
+- **Fix aplicado**: `packages/pkg_entry_template_body.sql`,
+  `create_from_template` — se valida por `movement_type`
+  (`GROUP BY movement_type HAVING COUNT(*) > 1` sobre las líneas con
+  `fixed_amount IS NULL`) y se rechaza con `-20065`.
+- **Test actualizado**: `test/test_pkg_entry_template.sql` ("Hallazgo G" →
+  regresión que exige `-20065`; el Escenario 5 con la plantilla simétrica
+  sigue pasando sin cambios).
+
+### 15. Plantilla sin líneas creaba un DRAFT vacío que fallaba al postear — CORREGIDO
+- **Fix aplicado**: `packages/pkg_entry_template_body.sql`,
+  `create_from_template` — se valida `COUNT(*)` de
+  `journal_entry_template_line` antes de crear el encabezado, y se
+  rechaza con `-20064` (mensaje propio que nombra la plantilla) en vez de
+  crear el DRAFT vacío.
+- **Test actualizado**: `test/test_pkg_entry_template.sql` ("Hallazgo H" →
+  regresión que exige `-20064`).
+
+### 16. DRAFT parcial sin `ROLLBACK` del caller — sin cambios (no es un bug)
+- Como ya se documentó en la sesión de pruebas, este es el comportamiento
+  esperado dado que el paquete nunca hace commit/rollback por diseño (igual
+  que el resto del sistema) — no se modificó código, solo queda como
+  responsabilidad explícita documentada del caller.
+
+### 17. `ck_gl_account_is_current` no bloqueaba `ASSET`/`LIABILITY` con `is_current IS NULL` — CORREGIDO
+- **Fix aplicado**: `db/22_alter_gl_account_current_classification.sql` —
+  se agregó `IS NOT NULL` explícito en la rama de ASSET/LIABILITY del
+  `CHECK`. Al aplicarlo en vivo se encontraron y limpiaron 2 filas de
+  `gl_account` que eran residuos huérfanos de scripts de diagnóstico de
+  esta misma sesión (no eran datos de prueba de ningún archivo de
+  `test/`), y que hubieran bloqueado la validación del `CHECK`.
+- **Tests actualizados**: todos los fixtures de `test/test_pkg_journal_entry.sql`,
+  `test/test_pkg_period_close.sql`, `test/test_pkg_entry_template.sql` y
+  `test/test_views_and_constraints.sql` que crean cuentas `ASSET` ahora
+  pasan `is_current='Y'` explícito (antes lo omitían, confiando en el
+  `CHECK` roto); `test_views_and_constraints.sql` Escenario 5a (antes
+  "Hallazgo") ahora exige `ORA-02290`.
+
+### 18. Reversar una cuenta no siempre la deja en el saldo "de antes" — sin cambios (no es un bug)
+- Característica del diseño (reversar es "excluir + sumar un movimiento
+  contrario nuevo", no "cancelar y desaparecer"), ya documentada en la
+  sesión de pruebas. No se modificó código.
+
+---
+
+## 🟡 Medios (histórico — 5 de 8 ya corregidos arriba)
 
 ### 11. `reverse_entry` no valida `entry_type` — permite reversar un `REVERSAL`
 - **Escenario**: "Hallazgo B" en `test/test_pkg_journal_entry.sql`.
@@ -447,12 +532,14 @@ contó **100** líneas `[PASS]` y **0** `[FAIL]` en total.
 
 ## Pendiente para la próxima sesión (a corregir, no solo documentar)
 
-Los 3 🔴 críticos y los 7 🟠 altos ya se corrigieron (ver
-[✅ Críticos corregidos](#-críticos-corregidos) y
-[✅ Altos corregidos](#-altos-corregidos)). Lo que queda:
+Los 3 🔴 críticos, los 7 🟠 altos y 5 de los 8 🟡 medios ya se corrigieron
+(ver [✅ Críticos corregidos](#-críticos-corregidos),
+[✅ Altos corregidos](#-altos-corregidos) y
+[✅ Medios corregidos](#-medios-corregidos)). Lo que queda:
 
-1. Evaluar los 8 🟡 medios — varios son decisiones de producto pendientes
-   (¿se permite reversar un REVERSAL? ¿reverso retroactivo?) más que bugs
-   puros; conviene decidir el comportamiento deseado antes de "corregir".
+1. Implementar costeo FIFO real (#13) — la más grande de las correcciones
+   medias, dejada deliberadamente para una sesión dedicada solo a esto.
 2. Los 3 riesgos de concurrencia ⚪ siguen solo documentados, sin prueba
    ejecutada (decisión tomada al inicio de la sesión de pruebas).
+3. #16 y #18 no requieren corrección — son características de diseño ya
+   documentadas, no bugs.

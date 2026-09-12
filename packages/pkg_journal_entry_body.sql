@@ -263,12 +263,15 @@ CREATE OR REPLACE PACKAGE BODY pkg_journal_entry AS
     IS
         v_company_id     journal_entry.company_id%TYPE;
         v_orig_status    journal_entry.status%TYPE;
+        v_orig_type      journal_entry.entry_type%TYPE;
+        v_orig_date      journal_entry.entry_date%TYPE;
         v_new_period_id  accounting_period.id%TYPE;
         v_new_entry_id   journal_entry.id%TYPE;
         v_test  inventory_movement.id%TYPE;
     BEGIN
         BEGIN
-            SELECT company_id, status INTO v_company_id, v_orig_status
+            SELECT company_id, status, entry_type, entry_date
+              INTO v_company_id, v_orig_status, v_orig_type, v_orig_date
               FROM journal_entry
              WHERE id = p_entry_id
                FOR UPDATE;
@@ -280,6 +283,24 @@ CREATE OR REPLACE PACKAGE BODY pkg_journal_entry AS
         IF v_orig_status <> 'ACTIVE' THEN
             RAISE_APPLICATION_ERROR(-20019,
                 'Solo se pueden anular asientos ACTIVE. Este está en ' || v_orig_status || '.');
+        END IF;
+
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo medio #11): decisión
+        -- de producto tomada -- no se permite encadenar reversos. Si un
+        -- REVERSAL quedó mal, se corrige con un asiento nuevo, no
+        -- anulando la anulación.
+        IF v_orig_type = 'REVERSAL' THEN
+            RAISE_APPLICATION_ERROR(-20021, 'No se puede reversar un asiento que ya es un REVERSAL.');
+        END IF;
+
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo medio #12): decisión
+        -- de producto tomada -- el reverso debe ser posterior (o igual) a
+        -- la fecha del asiento original, para no permitir anulaciones
+        -- retroactivas cronológicamente incoherentes.
+        IF p_reversal_date < v_orig_date THEN
+            RAISE_APPLICATION_ERROR(-20022,
+                'La fecha de reverso (' || TO_CHAR(p_reversal_date, 'YYYY-MM-DD') ||
+                ') no puede ser anterior a la fecha del asiento original (' || TO_CHAR(v_orig_date, 'YYYY-MM-DD') || ').');
         END IF;
 
         BEGIN

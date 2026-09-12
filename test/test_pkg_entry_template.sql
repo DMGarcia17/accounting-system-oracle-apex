@@ -48,8 +48,8 @@ BEGIN
         VALUES (v_company_id, 'Período de prueba', DATE '2026-01-01', DATE '2026-12-31', 'OPEN')
         RETURNING id INTO v_period_id;
 
-    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
-        VALUES (v_company_id, 'TEST-CASH-ET', 'Caja (prueba)', 'D', 'ASSET', 'Y')
+    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
+        VALUES (v_company_id, 'TEST-CASH-ET', 'Caja (prueba)', 'D', 'ASSET', 'Y', 'Y')
         RETURNING id INTO v_acc_cash;
 
     INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
@@ -224,67 +224,38 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO G: una plantilla con 2 líneas variables del MISMO lado
-    -- (Debe Gasto1, Debe Gasto2) recibe el MISMO p_variable_amount en
-    -- ambas -- confirma la limitación documentada en
-    -- db/21_journal_entry_template_line.sql, nunca antes probada.
+    -- REGRESIÓN (antes "Hallazgo G", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo medio #14): una plantilla con 2 líneas
+    -- variables del MISMO lado (Debe Gasto1, Debe Gasto2) ahora se
+    -- rechaza con -20065 en vez de asignarles el mismo monto en
+    -- silencio. El caso soportado (1 variable en Debe + 1 en Haber,
+    -- plantilla simétrica) sigue funcionando -- ver Escenario 5.
     ------------------------------------------------------------------
-    DECLARE
-        v_amt_e1 journal_entry_line.amount%TYPE;
-        v_amt_e2 journal_entry_line.amount%TYPE;
     BEGIN
         v_entry_id := pkg_entry_template.create_from_template(
             v_tpl_multi_var, v_period_id, DATE '2026-05-04', v_user_id, p_variable_amount => 100);
-        COMMIT;
-
-        SELECT amount INTO v_amt_e1 FROM journal_entry_line WHERE journal_entry_id = v_entry_id AND account_id = v_acc_expense1;
-        SELECT amount INTO v_amt_e2 FROM journal_entry_line WHERE journal_entry_id = v_entry_id AND account_id = v_acc_expense2;
-
-        report('Hallazgo G: 2 líneas variables del mismo lado reciben el mismo monto (limitación confirmada)',
-               v_amt_e1 = 100 AND v_amt_e2 = 100,
-               'gasto1=' || v_amt_e1 || ' gasto2=' || v_amt_e2 || ' -- no hay forma de darles montos distintos');
-
-        -- posteamos para no dejar el DRAFT huérfano (esta plantilla
-        -- cuadra: 100+100 Debe vs 200 Haber)
-        pkg_journal_entry.post_entry(v_entry_id);
-        COMMIT;
+        report('Regresión: 2 líneas variables del mismo lado se rechazan', FALSE, 'no lanzó excepción');
+        ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo G: 2 líneas variables del mismo lado', FALSE, SQLERRM);
+            report('Regresión: 2 líneas variables del mismo lado se rechazan', SQLCODE = -20065, SQLERRM);
             ROLLBACK;
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO H: plantilla sin líneas -> se crea un DRAFT vacío,
-    -- que luego falla al intentar postear (-20004 de pkg_journal_entry)
+    -- REGRESIÓN (antes "Hallazgo H", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo medio #15): una plantilla sin líneas
+    -- ahora se rechaza con -20064 en create_from_template, en vez de
+    -- crear un DRAFT vacío que recién fallaba al postear.
     ------------------------------------------------------------------
-    DECLARE
-        v_line_count NUMBER;
     BEGIN
         v_entry_id := pkg_entry_template.create_from_template(v_tpl_empty, v_period_id, DATE '2026-05-05', v_user_id);
-        COMMIT;
-
-        SELECT COUNT(*) INTO v_line_count FROM journal_entry_line WHERE journal_entry_id = v_entry_id;
-
-        BEGIN
-            pkg_journal_entry.post_entry(v_entry_id);
-            report('Hallazgo H: plantilla sin líneas crea un DRAFT vacío que no debería poder postearse', FALSE,
-                   'post_entry no lanzó excepción sobre un asiento sin líneas');
-            ROLLBACK;
-        EXCEPTION
-            WHEN OTHERS THEN
-                report('Hallazgo H: plantilla sin líneas crea un DRAFT vacío, confirmado por el -20004 al postear',
-                       v_line_count = 0 AND SQLCODE = -20004, SQLERRM);
-                ROLLBACK;
-                -- el DRAFT vacío sigue comprometido (COMMIT ya hecho
-                -- antes de intentar postear) -- lo descartamos para no
-                -- dejarlo huérfano con entry_number NULL.
-                pkg_journal_entry.discard_draft(v_entry_id);
-                COMMIT;
-        END;
+        report('Regresión: plantilla sin líneas se rechaza en create_from_template', FALSE, 'no lanzó excepción');
+        ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo H: plantilla sin líneas', FALSE, SQLERRM);
+            report('Regresión: plantilla sin líneas se rechaza en create_from_template',
+                   SQLCODE = -20064, SQLERRM);
             ROLLBACK;
     END;
 

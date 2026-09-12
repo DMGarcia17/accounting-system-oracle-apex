@@ -60,24 +60,24 @@ BEGIN
         VALUES (v_company_id, 'P3', DATE '2026-07-01', DATE '2026-09-30', 'OPEN')
         RETURNING id INTO v_period3_id;
 
-    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
-        VALUES (v_company_id, 'TEST-CASH-VC', 'Caja (prueba)', 'D', 'ASSET', 'Y')
+    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
+        VALUES (v_company_id, 'TEST-CASH-VC', 'Caja (prueba)', 'D', 'ASSET', 'Y', 'Y')
         RETURNING id INTO v_acc_cash;
 
     INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
         VALUES (v_company_id, 'TEST-REV-VC', 'Ventas (prueba)', 'C', 'REVENUE', 'Y')
         RETURNING id INTO v_acc_revenue;
 
-    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
-        VALUES (v_company_id, 'TEST-CASH-ACUM', 'Caja acumulada (prueba)', 'D', 'ASSET', 'Y')
+    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
+        VALUES (v_company_id, 'TEST-CASH-ACUM', 'Caja acumulada (prueba)', 'D', 'ASSET', 'Y', 'Y')
         RETURNING id INTO v_acc_cash_acc;
 
     INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
         VALUES (v_company_id, 'TEST-REV-ACUM', 'Ventas acumuladas (prueba)', 'C', 'REVENUE', 'Y')
         RETURNING id INTO v_acc_rev_acc;
 
-    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
-        VALUES (v_company_id, 'TEST-CASH-REV', 'Caja para reverso (prueba)', 'D', 'ASSET', 'Y')
+    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
+        VALUES (v_company_id, 'TEST-CASH-REV', 'Caja para reverso (prueba)', 'D', 'ASSET', 'Y', 'Y')
         RETURNING id INTO v_acc_cash_rev;
 
     INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
@@ -240,7 +240,11 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- ESCENARIO 5: ck_gl_account_is_current
+    -- ESCENARIO 5 / REGRESIÓN (antes "Hallazgo", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo medio #17): ck_gl_account_is_current
+    -- ahora exige `is_current IS NOT NULL` explícito en la rama de
+    -- ASSET/LIABILITY, así que un ASSET con is_current NULL debe
+    -- rechazarse con ORA-02290.
     ------------------------------------------------------------------
     DECLARE
         v_acc_tmp gl_account.id%TYPE;
@@ -248,13 +252,11 @@ BEGIN
         INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
             VALUES (v_company_id, 'TEST-ASSET-NULL', 'Activo con is_current NULL (prueba)', 'D', 'ASSET', 'Y', NULL)
             RETURNING id INTO v_acc_tmp;
-        report('Hallazgo: un ASSET con is_current NULL SÍ se acepta (el CHECK no lo bloquea por la lógica de 3 valores de SQL con IN/NULL)',
-               TRUE, 'se insertó sin error, a pesar del comentario que dice que ASSET/LIABILITY "tiene que venir Y o N"');
+        report('Escenario 5a: rechazar ASSET con is_current NULL', FALSE, 'no lanzó excepción');
         ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo: un ASSET con is_current NULL fue rechazado (el CHECK sí protege este caso en este entorno)',
-                   TRUE, SQLERRM);
+            report('Escenario 5a: rechazar ASSET con is_current NULL', SQLCODE = -2290, SQLERRM);
             ROLLBACK;
     END;
 

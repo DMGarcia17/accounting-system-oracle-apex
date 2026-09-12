@@ -46,12 +46,12 @@ BEGIN
         VALUES (v_company_id, 'test_user_pc_' || v_company_id, 'Usuario de Prueba', RPAD('x',64,'x'), RPAD('y',32,'y'))
         RETURNING id INTO v_user_id;
 
-    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
-        VALUES (v_company_id, 'TEST-CASH-PC', 'Caja (prueba)', 'D', 'ASSET', 'Y')
+    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
+        VALUES (v_company_id, 'TEST-CASH-PC', 'Caja (prueba)', 'D', 'ASSET', 'Y', 'Y')
         RETURNING id INTO v_acc_cash;
 
-    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
-        VALUES (v_company_id, 'TEST-INV-PC', 'Inventarios (prueba)', 'D', 'ASSET', 'Y')
+    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
+        VALUES (v_company_id, 'TEST-INV-PC', 'Inventarios (prueba)', 'D', 'ASSET', 'Y', 'Y')
         RETURNING id INTO v_acc_inventory;
 
     INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)

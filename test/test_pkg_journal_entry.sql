@@ -45,8 +45,8 @@ BEGIN
         VALUES (v_company_id, 'test_user_' || v_company_id, 'Usuario de Prueba', RPAD('x',64,'x'), RPAD('y',32,'y'))
         RETURNING id INTO v_user_id;
 
-    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
-        VALUES (v_company_id, 'TEST-CASH', 'Caja (prueba)', 'D', 'ASSET', 'Y')
+    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
+        VALUES (v_company_id, 'TEST-CASH', 'Caja (prueba)', 'D', 'ASSET', 'Y', 'Y')
         RETURNING id INTO v_account_cash;
 
     INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
@@ -102,8 +102,8 @@ BEGIN
     DECLARE
         v_parent_account gl_account.id%TYPE;
     BEGIN
-        INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
-            VALUES (v_company_id, 'TEST-PARENT', 'Cuenta padre (prueba)', 'D', 'ASSET', 'N')
+        INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
+            VALUES (v_company_id, 'TEST-PARENT', 'Cuenta padre (prueba)', 'D', 'ASSET', 'N', 'Y')
             RETURNING id INTO v_parent_account;
         COMMIT;
 
@@ -209,12 +209,12 @@ BEGIN
         VALUES (v_company2_id, 'Período de otra empresa', DATE '2026-01-01', DATE '2026-12-31', 'OPEN')
         RETURNING id INTO v_period2_id;
 
-    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
-        VALUES (v_company2_id, 'TEST-CASH-2', 'Caja de otra empresa (prueba)', 'D', 'ASSET', 'Y')
+    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
+        VALUES (v_company2_id, 'TEST-CASH-2', 'Caja de otra empresa (prueba)', 'D', 'ASSET', 'Y', 'Y')
         RETURNING id INTO v_account_cash2;
 
-    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_active)
-        VALUES (v_company_id, 'TEST-INACTIVE', 'Cuenta inactiva (prueba)', 'D', 'ASSET', 'Y', 'N')
+    INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_active, is_current)
+        VALUES (v_company_id, 'TEST-INACTIVE', 'Cuenta inactiva (prueba)', 'D', 'ASSET', 'Y', 'N', 'Y')
         RETURNING id INTO v_account_inactive;
 
     COMMIT;
@@ -600,17 +600,16 @@ BEGIN
     ------------------------------------------------------------------
     -- HALLAZGO B: reverse_entry no valida entry_type -- permite
     -- reversar un asiento que ya es de tipo REVERSAL (cadena de
-    -- reversos, anular una anulación).
+    -- reversos, anular una anulación). Ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo medio #11 (decisión: bloquear).
     ------------------------------------------------------------------
     DECLARE
         v_orig_entry  journal_entry.id%TYPE;
         v_reversal_1  journal_entry.id%TYPE;
         v_reversal_2  journal_entry.id%TYPE;
-        v_type2       journal_entry.entry_type%TYPE;
-        v_reverses2   journal_entry.reverses_entry_id%TYPE;
     BEGIN
         v_orig_entry := pkg_journal_entry.create_header(
-            v_company_id, v_period_id, DATE '2026-04-15', 'Hallazgo B: base para cadena de reversos', v_user_id);
+            v_company_id, v_period_id, DATE '2026-04-15', 'Regresión: base para cadena de reversos', v_user_id);
         pkg_journal_entry.add_line(v_orig_entry, v_account_cash, 'D', 300);
         pkg_journal_entry.add_line(v_orig_entry, v_account_rev, 'C', 300);
         pkg_journal_entry.post_entry(v_orig_entry);
@@ -620,31 +619,27 @@ BEGIN
         COMMIT;
 
         v_reversal_2 := pkg_journal_entry.reverse_entry(v_reversal_1, DATE '2026-04-17', v_user_id);
-        COMMIT;
-
-        SELECT entry_type, reverses_entry_id INTO v_type2, v_reverses2
-          FROM journal_entry WHERE id = v_reversal_2;
-
-        report('Hallazgo B: reverse_entry permite reversar un asiento de tipo REVERSAL (sin restricción de entry_type)',
-               v_type2 = 'REVERSAL' AND v_reverses2 = v_reversal_1,
-               'se encadenó un reverso sobre otro reverso sin que el paquete lo impida');
+        report('Regresión: reverse_entry rechaza reversar un asiento de tipo REVERSAL', FALSE, 'no lanzó excepción');
+        ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo B: reverse_entry sobre un asiento de tipo REVERSAL', FALSE, SQLERRM);
+            report('Regresión: reverse_entry rechaza reversar un asiento de tipo REVERSAL',
+                   SQLCODE = -20021, SQLERRM);
             ROLLBACK;
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO C: reverse_entry no valida que la fecha de reverso sea
-    -- posterior (o igual) a la fecha del asiento original.
+    -- REGRESIÓN (antes "Hallazgo C", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo medio #12, decisión: exigir fecha
+    -- posterior): reverse_entry ahora rechaza una fecha de reverso
+    -- anterior a la del asiento original.
     ------------------------------------------------------------------
     DECLARE
-        v_orig_entry         journal_entry.id%TYPE;
-        v_reversal           journal_entry.id%TYPE;
-        v_reversal_date_out  journal_entry.entry_date%TYPE;
+        v_orig_entry journal_entry.id%TYPE;
+        v_reversal   journal_entry.id%TYPE;
     BEGIN
         v_orig_entry := pkg_journal_entry.create_header(
-            v_company_id, v_period_id, DATE '2026-06-15', 'Hallazgo C: asiento para reverso retroactivo', v_user_id);
+            v_company_id, v_period_id, DATE '2026-06-15', 'Regresión: asiento para reverso retroactivo', v_user_id);
         pkg_journal_entry.add_line(v_orig_entry, v_account_cash, 'D', 50);
         pkg_journal_entry.add_line(v_orig_entry, v_account_rev, 'C', 50);
         pkg_journal_entry.post_entry(v_orig_entry);
@@ -653,16 +648,12 @@ BEGIN
         -- fecha de reverso ANTERIOR a la fecha del asiento original
         -- (2026-06-15), pero dentro del mismo período abierto
         v_reversal := pkg_journal_entry.reverse_entry(v_orig_entry, DATE '2026-01-05', v_user_id);
-        COMMIT;
-
-        SELECT entry_date INTO v_reversal_date_out FROM journal_entry WHERE id = v_reversal;
-
-        report('Hallazgo C: reverse_entry acepta una fecha de reverso anterior a la del asiento original',
-               v_reversal_date_out = DATE '2026-01-05',
-               'fecha_reverso=' || TO_CHAR(v_reversal_date_out,'YYYY-MM-DD') || ' -- no valida orden cronológico');
+        report('Regresión: reverse_entry rechaza fecha de reverso anterior al asiento original', FALSE, 'no lanzó excepción');
+        ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo C: reverse_entry con fecha de reverso retroactiva', FALSE, SQLERRM);
+            report('Regresión: reverse_entry rechaza fecha de reverso anterior al asiento original',
+                   SQLCODE = -20022, SQLERRM);
             ROLLBACK;
     END;
 

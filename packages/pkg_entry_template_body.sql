@@ -20,6 +20,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_entry_template AS
         v_is_active   journal_entry_template.is_active%TYPE;
         v_new_entry   journal_entry.id%TYPE;
         v_amount      NUMBER;
+        v_line_count  NUMBER;
+        v_var_count   NUMBER;
     BEGIN
         BEGIN
             SELECT company_id, entry_type, name, is_active
@@ -33,6 +35,39 @@ CREATE OR REPLACE PACKAGE BODY pkg_entry_template AS
 
         IF v_is_active <> 'Y' THEN
             RAISE_APPLICATION_ERROR(-20061, 'La plantilla está inactiva.');
+        END IF;
+
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo medio #15): antes,
+        -- una plantilla sin líneas creaba un DRAFT vacío que recién
+        -- fallaba al postear, con un error genérico de pkg_journal_entry
+        -- que no menciona la plantilla. Se valida acá, antes de crear
+        -- el encabezado.
+        SELECT COUNT(*) INTO v_line_count
+          FROM journal_entry_template_line WHERE template_id = p_template_id;
+
+        IF v_line_count = 0 THEN
+            RAISE_APPLICATION_ERROR(-20064, 'La plantilla "' || v_name || '" no tiene líneas configuradas.');
+        END IF;
+
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo medio #14): el caso
+        -- soportado (TPL-VAR-OK) es 1 línea variable en Debe + 1 en Haber,
+        -- ambas con el mismo p_variable_amount (plantilla simétrica). Lo
+        -- que no tiene sentido -- y antes se aceptaba en silencio con un
+        -- monto repetido incorrecto -- es 2+ líneas variables del MISMO
+        -- lado (ej. dos Debe variables). Se valida por movement_type.
+        SELECT COUNT(*) INTO v_var_count
+          FROM (
+              SELECT movement_type
+                FROM journal_entry_template_line
+               WHERE template_id = p_template_id AND fixed_amount IS NULL
+               GROUP BY movement_type
+              HAVING COUNT(*) > 1
+          );
+
+        IF v_var_count > 0 THEN
+            RAISE_APPLICATION_ERROR(-20065,
+                'La plantilla "' || v_name || '" tiene 2 o más líneas de monto variable del mismo lado (Debe o Haber) -- ' ||
+                'create_from_template solo admite un p_variable_amount único, que se aplica a lo sumo una vez por lado.');
         END IF;
 
         v_new_entry := pkg_journal_entry.create_header(

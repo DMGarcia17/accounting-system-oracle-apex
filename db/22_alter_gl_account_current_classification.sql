@@ -14,8 +14,15 @@ ALTER TABLE gl_account ADD (
     is_current CHAR(1)
 );
 
+-- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo medio #17): la condición
+-- original usaba `is_current IN ('Y','N')` para exigir Y/N en ASSET/
+-- LIABILITY, pero por la lógica de 3 valores de SQL `NULL IN ('Y','N')`
+-- evalúa a UNKNOWN (no FALSE), y un CHECK solo rechaza si evalúa a
+-- FALSE -- así que un ASSET/LIABILITY con is_current NULL se aceptaba
+-- sin error, contradiciendo la intención documentada arriba. Se agrega
+-- `IS NOT NULL` explícito en esa rama.
 ALTER TABLE gl_account ADD CONSTRAINT ck_gl_account_is_current CHECK (
-    (account_type IN ('ASSET','LIABILITY') AND is_current IN ('Y','N'))
+    (account_type IN ('ASSET','LIABILITY') AND is_current IS NOT NULL AND is_current IN ('Y','N'))
     OR
     (account_type NOT IN ('ASSET','LIABILITY') AND is_current IS NULL)
 );
