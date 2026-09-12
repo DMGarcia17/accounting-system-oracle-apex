@@ -10,6 +10,14 @@ reprodujo con evidencia real (mensaje de error / valores observados).
 scripts de `test/`, **0 fallos** (cada uno confirmó exactamente lo que debía
 confirmar, sea un comportamiento correcto o un bug).
 
+**Actualización (2026-09-11): los 3 críticos ya fueron corregidos** y
+verificados en vivo contra la misma base; los escenarios que los exponían se
+reescribieron como regresiones (ahora esperan el comportamiento correcto, no
+el bug). Detalle de cada corrección en la sección
+[✅ Críticos corregidos](#-críticos-corregidos) más abajo. El resto de esta
+bitácora (Altos/Medios/Riesgos/Notas) sigue reflejando el estado original de
+la sesión de pruebas y sigue pendiente.
+
 Convención de severidad: 🔴 Crítico (rompe un flujo real u otro objeto
 documentado) · 🟠 Alto (bug de validación/seguridad real) · 🟡 Medio (diseño
 inconsistente o limitación no documentada del todo) · ⚪ Riesgo documentado
@@ -17,7 +25,64 @@ sin prueba ejecutada (concurrencia) · ℹ️ Nota de entorno (no es bug de cód
 
 ---
 
-## 🔴 Críticos
+## ✅ Críticos corregidos
+
+### 1. `mv_account_balances` NO se refrescaba sola con el `COMMIT` — CORREGIDO
+- **Causa raíz confirmada** (no solo hipótesis): `status` es parte del
+  `GROUP BY` de la MV, y `pkg_journal_entry.post_entry` hace un `UPDATE` de
+  `status` (DRAFT→ACTIVE) sobre una fila que ya pertenece a un grupo
+  agregado. Eso es un cambio de membresía de grupo, no un `INSERT` nuevo, y
+  el algoritmo de fast refresh incremental para vistas agregadas no lo
+  soporta. Reproducido en vivo: un `INSERT` puro (header+líneas, sin postear)
+  mantiene la MV en `FRESH`; el `post_entry` inmediatamente siguiente la deja
+  en `UNUSABLE`.
+- **Fix aplicado**: `db/10_mv_account_balances.sql` — se cambió
+  `REFRESH FAST ON COMMIT` por `REFRESH COMPLETE ON COMMIT`. Sigue siendo
+  automático (ningún caller necesita refrescar a mano), solo que el método
+  interno es COMPLETE. Verificado en vivo: tras `post_entry` + `COMMIT`, la
+  MV queda `FRESH` y el dato correcto se lee sin ningún refresh manual.
+- **Tests actualizados**: `test/test_views_and_constraints.sql` Escenario 1
+  (antes "Hallazgo crítico", ahora regresión que exige refresco automático) y
+  se quitaron los `DBMS_MVIEW.REFRESH` manuales de los Escenarios 2 y 3;
+  `test/test_pkg_period_close.sql` Escenarios 3a/3b/6 (se quitaron los
+  workarounds de refresh manual).
+
+### 2. Dos `DRAFT` (`entry_number NULL`) de la misma empresa NO podían coexistir — CORREGIDO
+- **Fix aplicado**: `db/16_alter_journal_entry_draft.sql` — se eliminó el
+  `CONSTRAINT uq_entry_company_number UNIQUE (company_id, entry_number)` y
+  se reemplazó por un índice único basado en función:
+  ```sql
+  CREATE UNIQUE INDEX uq_entry_company_number ON journal_entry (
+      CASE WHEN entry_number IS NOT NULL THEN company_id   END,
+      CASE WHEN entry_number IS NOT NULL THEN entry_number END
+  );
+  ```
+  Con `entry_number NULL`, ambas expresiones de la clave dan `NULL` → Oracle
+  excluye la fila del índice (múltiples DRAFTs conviven libremente). Con
+  `entry_number` asignado, la clave es exactamente `(company_id,
+  entry_number)` → la unicidad real se sigue exigiendo igual que antes
+  (verificado en vivo: un segundo `UPDATE` intentando repetir el mismo
+  `entry_number` sigue lanzando `ORA-00001`).
+- **Tests actualizados**: `test/test_pkg_journal_entry.sql` ("Hallazgo D" →
+  regresión) y `test/test_views_and_constraints.sql` (Escenario 4, ídem).
+
+### 3. `close_period` podía duplicar el desbalance de una cuenta con saldo contrario a su `normal_balance` — CORREGIDO
+- **Fix aplicado**: `packages/pkg_period_close_body.sql`, bloque de
+  cancelación de cuentas de resultado. Antes elegía la dirección de la línea
+  de cancelación siempre como la contraria al `normal_balance` declarado de
+  la cuenta. Ahora se decide con el saldo real en bruto (Debe vs Haber): si
+  `total_debit > total_credit` cancela con `'C'` por la diferencia, si
+  `total_credit > total_debit` cancela con `'D'` por la diferencia —
+  correcto sin importar si la cuenta terminó en su dirección "normal" o no.
+- **Verificado en vivo**: el mismo dataset que antes producía
+  `ORA-20005: Debe (590) distinto de Haber (10)` ahora cierra sin error y
+  deja el saldo de la cuenta en 0.
+- **Tests actualizados**: `test/test_pkg_period_close.sql` ("Hallazgo F" →
+  regresión que exige saldo final = 0).
+
+---
+
+## 🔴 Críticos (histórico — ya corregidos arriba)
 
 ### 1. `mv_account_balances` NO se refresca sola con el `COMMIT`
 - **Objeto**: `db/10_mv_account_balances.sql`, `pkg_period_close`.
@@ -318,14 +383,11 @@ contó **100** líneas `[PASS]` y **0** `[FAIL]` en total.
 
 ## Pendiente para la próxima sesión (a corregir, no solo documentar)
 
-Orden sugerido por severidad/impacto:
+Los 3 🔴 críticos ya se corrigieron (ver
+[✅ Críticos corregidos](#-críticos-corregidos)). Orden sugerido para lo que
+queda:
 
-1. Arreglar el refresh de `mv_account_balances` (crítico #1) — probablemente
-   recrear la MV después de confirmar el log en su estado final.
-2. Resolver el UNIQUE de `entry_number` NULL (crítico #2) — bloquea
-   cualquier flujo real con más de un DRAFT simultáneo por empresa.
-3. Corregir el signo en la cancelación de `close_period` (crítico #3).
-4. Los 7 hallazgos 🟠 altos (uno por uno son cambios chicos y localizados).
-5. Evaluar los 🟡 medios — varios son decisiones de producto pendientes
+1. Los 7 hallazgos 🟠 altos (uno por uno son cambios chicos y localizados).
+2. Evaluar los 🟡 medios — varios son decisiones de producto pendientes
    (¿se permite reversar un REVERSAL? ¿reverso retroactivo?) más que bugs
    puros; conviene decidir el comportamiento deseado antes de "corregir".

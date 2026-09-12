@@ -87,44 +87,31 @@ BEGIN
     COMMIT;
 
     ------------------------------------------------------------------
-    -- ESCENARIO 1 / HALLAZGO CRÍTICO: mv_account_balances está creada
-    -- con REFRESH FAST ON COMMIT (db/10_mv_account_balances.sql) y
-    -- db/README.md documenta esto como el mecanismo de saldos en
-    -- "tiempo real". Empíricamente, en esta base la vista materializada
-    -- NO se refresca sola al hacer COMMIT -- queda vacía/desactualizada
-    -- hasta que alguien llama DBMS_MVIEW.REFRESH a mano. Además,
-    -- user_mviews.fast_refreshable/staleness sugieren que el fast
-    -- refresh quedó inválido (posiblemente por el DROP+CREATE del
-    -- materialized view log en 09b, ejecutado después de que la MV ya
-    -- existía) -- un refresh manual 'F' (fast) falla con ORA-12057;
-    -- solo funciona 'C' (complete).
+    -- ESCENARIO 1 / REGRESIÓN (antes "Hallazgo crítico", ya corregido --
+    -- ver test/HALLAZGOS.md #1): mv_account_balances agrupa por status,
+    -- y post_entry hace un UPDATE de status (DRAFT->ACTIVE) sobre una
+    -- fila ya agregada -- eso es un cambio de grupo que el algoritmo de
+    -- FAST REFRESH incremental no soporta, así que se cambió a REFRESH
+    -- COMPLETE ON COMMIT (sigue siendo automático, solo que el método
+    -- interno ya no es FAST). Este escenario confirma que, sin ningún
+    -- DBMS_MVIEW.REFRESH manual, el COMMIT deja la MV actualizada.
     ------------------------------------------------------------------
     DECLARE
-        v_count_before mv_account_balances.total_debit%TYPE;
         v_total_debit  mv_account_balances.total_debit%TYPE;
     BEGIN
         v_entry_id := pkg_journal_entry.create_header(v_company_id, v_period1_id, DATE '2026-01-10', 'Escenario 1: refresco automático', v_user_id);
         pkg_journal_entry.add_line(v_entry_id, v_acc_cash, 'D', 100);
         pkg_journal_entry.add_line(v_entry_id, v_acc_revenue, 'C', 100);
         pkg_journal_entry.post_entry(v_entry_id);
-        COMMIT;  -- en teoría dispara el FAST REFRESH ON COMMIT
-
-        SELECT COUNT(*) INTO v_count_before
-          FROM mv_account_balances
-         WHERE company_id = v_company_id AND period_id = v_period1_id
-           AND account_id = v_acc_cash AND status = 'ACTIVE';
-
-        -- workaround: refresco manual COMPLETE (FAST está inválido)
-        DBMS_MVIEW.REFRESH('MV_ACCOUNT_BALANCES', 'C');
+        COMMIT;  -- dispara el REFRESH ON COMMIT, sin intervención manual
 
         SELECT total_debit INTO v_total_debit
           FROM mv_account_balances
          WHERE company_id = v_company_id AND period_id = v_period1_id
            AND account_id = v_acc_cash AND status = 'ACTIVE';
 
-        report('Hallazgo: mv_account_balances NO se refresca sola con el COMMIT (contradice db/10 y db/README.md) -- solo se actualiza con un DBMS_MVIEW.REFRESH manual',
-               v_count_before = 0 AND v_total_debit = 100,
-               'filas antes del refresh manual=' || v_count_before || ', total_debit tras refresh manual=' || v_total_debit);
+        report('Escenario 1: mv_account_balances se refresca sola con el COMMIT, sin DBMS_MVIEW.REFRESH manual',
+               v_total_debit = 100, 'total_debit tras el COMMIT=' || v_total_debit);
     EXCEPTION
         WHEN OTHERS THEN
             report('Escenario 1: mv_account_balances', FALSE, SQLERRM);
@@ -154,7 +141,6 @@ BEGIN
         pkg_journal_entry.add_line(v_entry_y, v_acc_rev_rev, 'C', 300);
         pkg_journal_entry.post_entry(v_entry_y);
         COMMIT;
-        DBMS_MVIEW.REFRESH('MV_ACCOUNT_BALANCES', 'C');  -- workaround del hallazgo del Escenario 1
 
         SELECT NVL(period_balance,0) INTO v_bal_before
           FROM vw_account_balance WHERE period_id = v_period1_id AND account_id = v_acc_rev_rev;
@@ -165,7 +151,6 @@ BEGIN
             v_reversal_id := pkg_journal_entry.reverse_entry(v_entry_y, DATE '2026-02-15', v_user_id);
         END;
         COMMIT;
-        DBMS_MVIEW.REFRESH('MV_ACCOUNT_BALANCES', 'C');
 
         SELECT NVL(period_balance,0) INTO v_bal_after
           FROM vw_account_balance WHERE period_id = v_period1_id AND account_id = v_acc_rev_rev;
@@ -209,7 +194,6 @@ BEGIN
         pkg_journal_entry.post_entry(v_entry_id);
 
         COMMIT;
-        DBMS_MVIEW.REFRESH('MV_ACCOUNT_BALANCES', 'C');  -- workaround del hallazgo del Escenario 1
 
         SELECT accumulated_balance INTO v_acc_p1 FROM vw_account_balance WHERE period_id = v_period1_id AND account_id = v_acc_cash_acc;
         SELECT accumulated_balance INTO v_acc_p2 FROM vw_account_balance WHERE period_id = v_period2_id AND account_id = v_acc_cash_acc;
@@ -225,15 +209,15 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- ESCENARIO 4 / HALLAZGO: db/16_alter_journal_entry_draft.sql y
-    -- db/README.md afirman que "Oracle permite múltiples NULL en un
-    -- UNIQUE compuesto" y que "varios DRAFTs de la misma empresa
-    -- pueden coexistir con entry_number IS NULL sin violar el
-    -- UNIQUE". Probado empíricamente esto es FALSO en esta base:
-    -- Oracle excluye una fila de la comprobación de unicidad SOLO si
-    -- TODAS las columnas de la clave son NULL -- acá company_id
-    -- nunca lo es, así que DOS filas con (company_id=X,
-    -- entry_number=NULL) SÍ se consideran duplicadas entre sí.
+    -- ESCENARIO 4 / REGRESIÓN (antes "Hallazgo", ya corregido -- ver
+    -- test/HALLAZGOS.md #2): el UNIQUE (company_id, entry_number)
+    -- original NO dejaba coexistir 2+ DRAFTs (entry_number NULL) de la
+    -- misma empresa, porque Oracle solo excluye una fila del chequeo de
+    -- unicidad si TODAS las columnas de la clave son NULL, y
+    -- company_id nunca lo es acá. Se reemplazó el constraint por un
+    -- índice único basado en función (ver db/16_alter_journal_entry_draft.sql)
+    -- que solo indexa la fila cuando entry_number NO es NULL. Este
+    -- escenario confirma que ahora sí coexisten.
     ------------------------------------------------------------------
     DECLARE
         v_draft1 journal_entry.id%TYPE;
@@ -242,19 +226,11 @@ BEGIN
         v_draft1 := pkg_journal_entry.create_header(v_company_id, v_period1_id, DATE '2026-03-01', 'Escenario 4: draft 1', v_user_id);
         COMMIT;
 
-        BEGIN
-            v_draft2 := pkg_journal_entry.create_header(v_company_id, v_period1_id, DATE '2026-03-02', 'Escenario 4: draft 2', v_user_id);
-            report('Escenario 4: varios DRAFT con entry_number NULL coexisten sin violar el UNIQUE', TRUE,
-                   'contrario a lo esperado según nuestra primera lectura: SÍ coexistieron');
-            pkg_journal_entry.discard_draft(v_draft2);
-            COMMIT;
-        EXCEPTION
-            WHEN OTHERS THEN
-                report('Hallazgo: un segundo DRAFT (entry_number NULL) de la misma empresa NO puede coexistir con el primero -- contradice db/16_alter_journal_entry_draft.sql y db/README.md',
-                       SQLCODE = -1, SQLERRM);
-                ROLLBACK;
-        END;
+        v_draft2 := pkg_journal_entry.create_header(v_company_id, v_period1_id, DATE '2026-03-02', 'Escenario 4: draft 2', v_user_id);
+        COMMIT;
+        report('Escenario 4: varios DRAFT con entry_number NULL coexisten sin violar el UNIQUE', TRUE);
 
+        pkg_journal_entry.discard_draft(v_draft2);
         pkg_journal_entry.discard_draft(v_draft1);
         COMMIT;
     EXCEPTION

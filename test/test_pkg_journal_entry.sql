@@ -499,47 +499,36 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO D: dos asientos en DRAFT (entry_number NULL) de la
-    -- MISMA empresa NO pueden coexistir. El UNIQUE (company_id,
-    -- entry_number) trata dos filas con entry_number NULL como
-    -- DUPLICADAS entre sí en cuanto company_id coincide (Oracle solo
-    -- excluye una fila de la comprobación de unicidad si TODAS las
-    -- columnas de la clave son NULL -- acá company_id nunca lo es).
-    -- Esto CONTRADICE literalmente lo que documentan
-    -- db/16_alter_journal_entry_draft.sql y db/README.md ("Oracle
-    -- permite múltiples NULLs en un UNIQUE compuesto, varios DRAFTs
-    -- pueden coexistir"). En la práctica: la simple SEGUNDA llamada a
-    -- create_header de la misma empresa, mientras exista CUALQUIER
-    -- DRAFT sin postear de esa empresa, revienta con un ORA-00001
-    -- crudo (no un RAISE_APPLICATION_ERROR de negocio).
+    -- REGRESIÓN (antes "Hallazgo D", ya corregido -- ver
+    -- test/HALLAZGOS.md #2): el UNIQUE (company_id, entry_number)
+    -- original trataba dos DRAFTs (entry_number NULL) de la misma
+    -- empresa como duplicados entre sí (Oracle solo excluye una fila
+    -- del chequeo de unicidad si TODAS las columnas de la clave son
+    -- NULL, y company_id nunca lo es acá). Se reemplazó el constraint
+    -- por un índice único basado en función que solo indexa la fila
+    -- cuando entry_number NO es NULL (ver
+    -- db/16_alter_journal_entry_draft.sql). Este escenario confirma
+    -- que ahora sí coexisten dos DRAFTs de la misma empresa.
     ------------------------------------------------------------------
     DECLARE
         v_draft1 journal_entry.id%TYPE;
         v_draft2 journal_entry.id%TYPE;
     BEGIN
         v_draft1 := pkg_journal_entry.create_header(
-            v_company_id, v_period_id, DATE '2026-04-11', 'Hallazgo D: primer DRAFT', v_user_id);
+            v_company_id, v_period_id, DATE '2026-04-11', 'Regresión: primer DRAFT', v_user_id);
         COMMIT;
 
-        BEGIN
-            v_draft2 := pkg_journal_entry.create_header(
-                v_company_id, v_period_id, DATE '2026-04-11', 'Hallazgo D: segundo DRAFT (debería poder coexistir)', v_user_id);
-            report('Hallazgo D: dos DRAFT de la misma empresa coexisten sin violar el UNIQUE', TRUE,
-                   'contrario a lo esperado: SÍ se pudo crear un segundo DRAFT');
-            pkg_journal_entry.discard_draft(v_draft2);
-            COMMIT;
-        EXCEPTION
-            WHEN OTHERS THEN
-                report('Hallazgo D: un segundo DRAFT de la misma empresa NO puede coexistir con el primero (contradice db/16 y db/README.md)',
-                       SQLCODE = -1, SQLERRM);
-                ROLLBACK;
-        END;
+        v_draft2 := pkg_journal_entry.create_header(
+            v_company_id, v_period_id, DATE '2026-04-11', 'Regresión: segundo DRAFT', v_user_id);
+        COMMIT;
+        report('Regresión: dos DRAFT de la misma empresa coexisten sin violar el UNIQUE', TRUE);
 
+        pkg_journal_entry.discard_draft(v_draft2);
         pkg_journal_entry.discard_draft(v_draft1);
         COMMIT;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo D: coexistencia de DRAFTs con entry_number NULL', FALSE, SQLERRM);
+            report('Regresión: coexistencia de DRAFTs con entry_number NULL', FALSE, SQLERRM);
             ROLLBACK;
     END;
 

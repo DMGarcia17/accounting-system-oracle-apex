@@ -154,14 +154,9 @@ BEGIN
 
         COMMIT;
 
-        -- HALLAZGO CRÍTICO (ver HALLAZGOS.md): mv_account_balances está
-        -- declarada REFRESH FAST ON COMMIT, pero empíricamente NO se
-        -- refresca sola al hacer COMMIT en esta base -- queda vacía/
-        -- desactualizada hasta que alguien llama DBMS_MVIEW.REFRESH a
-        -- mano. Lo forzamos acá para poder seguir probando el resto de
-        -- la lógica de pkg_period_close (que si depende de la vista).
-        DBMS_MVIEW.REFRESH('MV_ACCOUNT_BALANCES', 'C');
-
+        -- mv_account_balances ya se refresca sola con el COMMIT (ver
+        -- test/HALLAZGOS.md #1, corregido): REFRESH COMPLETE ON COMMIT
+        -- en vez de FAST, sin intervención manual.
         v_estimate := pkg_period_close.estimate_period_result(v_period_a, v_acc_purchases);
         report('Escenario 3a: estimate_period_result antes del cierre', v_estimate = 200, 'estimado=' || v_estimate);
     EXCEPTION
@@ -180,9 +175,6 @@ BEGIN
     BEGIN
         pkg_period_close.close_period(v_period_a, 200, v_acc_inventory, v_acc_purchases, v_acc_retained, v_user_id);
         COMMIT;
-
-        -- workaround del mismo hallazgo: refrescar a mano antes de leer vw_account_balance
-        DBMS_MVIEW.REFRESH('MV_ACCOUNT_BALANCES', 'C');
 
         SELECT status INTO v_status FROM accounting_period WHERE id = v_period_a;
         SELECT NVL(period_balance,0) INTO v_bal_purchases FROM vw_account_balance WHERE period_id = v_period_a AND account_id = v_acc_purchases;
@@ -239,10 +231,6 @@ BEGIN
         v_deb_amount  journal_entry_line.amount%TYPE;
         v_cred_amount journal_entry_line.amount%TYPE;
     BEGIN
-        -- workaround del mismo hallazgo: open_period lee vw_account_balance
-        -- para heredar el inventario del período anterior cerrado
-        DBMS_MVIEW.REFRESH('MV_ACCOUNT_BALANCES', 'C');
-
         pkg_period_close.open_period(v_period_b, v_acc_inventory, v_acc_purchases, v_user_id);
         COMMIT;
 
@@ -339,58 +327,41 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO F: cuando una cuenta de resultado termina el período
-    -- con saldo neto en la dirección CONTRARIA a su normal_balance
-    -- (ej. Ventas con más Debe que Haber -- una devolución sin ventas
-    -- que la respalden en el mismo período), la línea de "cancelación"
-    -- que arma close_period usa siempre la dirección contraria al
-    -- normal_balance de la cuenta, SIN mirar el signo real del saldo
-    -- -- así que en vez de cancelarlo, lo DUPLICA. Esto puede hacer
-    -- que el asiento de cierre de resultados quede descuadrado
-    -- (-20005 de pkg_journal_entry, no manejado por pkg_period_close)
-    -- o que quede posteado pero con un saldo final incorrecto.
+    -- REGRESIÓN (antes "Hallazgo F", ya corregido -- ver test/HALLAZGOS.md #3):
+    -- cuando una cuenta de resultado termina el período con saldo neto
+    -- en la dirección CONTRARIA a su normal_balance (ej. Ventas con más
+    -- Debe que Haber -- una devolución sin ventas que la respalden en
+    -- el mismo período), close_period debe cancelar el saldo REAL (Debe
+    -- vs Haber) en vez de asumir siempre la dirección contraria al
+    -- normal_balance -- de lo contrario duplica el desbalance en vez de
+    -- anularlo. Este escenario ahora espera que el cierre cuadre y deje
+    -- el saldo de Ventas del período en 0.
     ------------------------------------------------------------------
     DECLARE
         v_bal_sales_after NUMBER;
-        v_bug_via_error   BOOLEAN := FALSE;
-        v_bug_via_balance BOOLEAN := FALSE;
         v_detalle         VARCHAR2(400);
     BEGIN
         v_entry_id := pkg_journal_entry.create_header(
             v_company_id, v_period_anomaly, DATE '2027-05-01',
-            'Devolución sobre venta sin venta previa en el período (Hallazgo F)', v_user_id);
+            'Devolución sobre venta sin venta previa en el período (regresión saldo contrario)', v_user_id);
         pkg_journal_entry.add_line(v_entry_id, v_acc_sales, 'D', 300);   -- anómalo: Ventas recibe un DEBE
         pkg_journal_entry.add_line(v_entry_id, v_acc_cash, 'C', 300);
         pkg_journal_entry.post_entry(v_entry_id);
         COMMIT;
 
-        BEGIN
-            pkg_period_close.close_period(v_period_anomaly, 10, v_acc_inventory, v_acc_purchases, v_acc_retained, v_user_id);
-            COMMIT;
+        pkg_period_close.close_period(v_period_anomaly, 10, v_acc_inventory, v_acc_purchases, v_acc_retained, v_user_id);
+        COMMIT;
 
-            SELECT NVL(period_balance,0) INTO v_bal_sales_after
-              FROM vw_account_balance WHERE period_id = v_period_anomaly AND account_id = v_acc_sales;
+        SELECT NVL(period_balance,0) INTO v_bal_sales_after
+          FROM vw_account_balance WHERE period_id = v_period_anomaly AND account_id = v_acc_sales;
 
-            IF v_bal_sales_after <> 0 THEN
-                v_bug_via_balance := TRUE;
-                v_detalle := 'close_period terminó SIN error, pero el saldo de Ventas del período quedó en '
-                             || v_bal_sales_after || ' en vez de 0 (la "cancelación" duplicó el desbalance)';
-            ELSE
-                v_detalle := 'close_period terminó sin error y el saldo de Ventas quedó en 0 -- no se pudo reproducir el hallazgo con este dataset';
-            END IF;
-        EXCEPTION
-            WHEN OTHERS THEN
-                v_bug_via_error := TRUE;
-                v_detalle := 'close_period lanzó una excepción no manejada al intentar cuadrar el asiento de cierre: '
-                             || SQLERRM || ' (SQLCODE=' || SQLCODE || ')';
-                ROLLBACK;
-        END;
-
-        report('Hallazgo F: cancelación de cuentas de resultado con saldo contrario a su normal_balance',
-               v_bug_via_error OR v_bug_via_balance, v_detalle);
+        v_detalle := 'saldo de Ventas del período tras el cierre = ' || v_bal_sales_after;
+        report('Regresión: close_period cancela correctamente una cuenta con saldo contrario a su normal_balance',
+               v_bal_sales_after = 0, v_detalle);
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo F: cancelación de cuentas de resultado con saldo contrario a su normal_balance', FALSE, SQLERRM);
+            report('Regresión: close_period cancela correctamente una cuenta con saldo contrario a su normal_balance',
+                   FALSE, 'close_period lanzó una excepción inesperada: ' || SQLERRM || ' (SQLCODE=' || SQLCODE || ')');
             ROLLBACK;
     END;
 

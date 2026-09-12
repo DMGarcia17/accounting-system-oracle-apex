@@ -105,13 +105,28 @@ CREATE OR REPLACE PACKAGE BODY pkg_period_close AS
                             ELSE          rec.total_credit - rec.total_debit
                          END;
 
-            IF v_balance <> 0 THEN
+            -- CORRECCIÓN (ver test/HALLAZGOS.md #3): la cancelación NO puede
+            -- asumir siempre la dirección contraria a normal_balance -- eso
+            -- solo cancela bien cuando la cuenta terminó el período con
+            -- saldo en su dirección "normal". Si terminó con saldo neto
+            -- contrario (ej. una cuenta de Ventas con más Debe que Haber),
+            -- esa suposición REFUERZA el desbalance en vez de anularlo
+            -- (confirmado con una reproducción real: Debe 590 vs Haber 10).
+            -- La cancelación correcta se decide con el saldo real en bruto
+            -- (Debe vs Haber), sin pasar por normal_balance: lo que sobra
+            -- en Debe se cancela con Haber, y viceversa, cualquiera sea el
+            -- tipo de cuenta.
+            IF rec.total_debit > rec.total_credit THEN
                 pkg_journal_entry.add_line(
-                    v_result_entry, rec.id,
-                    CASE rec.normal_balance WHEN 'D' THEN 'C' ELSE 'D' END,  -- movimiento contrario, cancela
-                    ABS(v_balance)
+                    v_result_entry, rec.id, 'C', rec.total_debit - rec.total_credit
                 );
+            ELSIF rec.total_credit > rec.total_debit THEN
+                pkg_journal_entry.add_line(
+                    v_result_entry, rec.id, 'D', rec.total_credit - rec.total_debit
+                );
+            END IF;
 
+            IF v_balance <> 0 THEN
                 IF rec.account_type = 'REVENUE' THEN
                     v_total_revenue  := v_total_revenue + v_balance;
                 ELSE
