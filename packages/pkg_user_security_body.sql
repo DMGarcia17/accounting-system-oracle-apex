@@ -23,6 +23,21 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
 
 
     ------------------------------------------------------------
+    -- Privada: valida que el password no sea NULL ni demasiado corto.
+    -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo alto #5): antes,
+    -- create_user/change_password/reset_password aceptaban password
+    -- NULL sin error (Oracle trata NULL || salt como salt, así que
+    -- calculaba un hash "válido" para un password vacío).
+    ------------------------------------------------------------
+    PROCEDURE validate_password(p_password IN VARCHAR2) IS
+    BEGIN
+        IF p_password IS NULL OR LENGTH(p_password) < 4 THEN
+            RAISE_APPLICATION_ERROR(-20038, 'El password debe tener al menos 4 caracteres.');
+        END IF;
+    END validate_password;
+
+
+    ------------------------------------------------------------
     FUNCTION create_user(
         p_company_id  IN user_account.company_id%TYPE,
         p_username    IN user_account.username%TYPE,
@@ -35,6 +50,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
         v_hash   VARCHAR2(64);
         v_new_id user_account.id%TYPE;
     BEGIN
+        validate_password(p_password);
+
         v_salt := RAWTOHEX(SYS_GUID());  -- 16 bytes -> 32 caracteres hex
         v_hash := hash_password(p_password, v_salt);
 
@@ -75,6 +92,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
             RAISE_APPLICATION_ERROR(-20032, 'El password actual no es correcto.');
         END IF;
 
+        validate_password(p_new_password);
+
         v_new_salt := RAWTOHEX(SYS_GUID());
         v_new_hash := hash_password(p_new_password, v_new_salt);  -- calculado ANTES del UPDATE
 
@@ -99,6 +118,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
         IF v_exists = 0 THEN
             RAISE_APPLICATION_ERROR(-20031, 'No existe un usuario con id ' || p_user_id || '.');
         END IF;
+
+        validate_password(p_new_password);
 
         v_new_salt := RAWTOHEX(SYS_GUID());
         v_new_hash := hash_password(p_new_password, v_new_salt);  -- calculado ANTES del UPDATE
@@ -176,7 +197,21 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
 
     ------------------------------------------------------------
     PROCEDURE assign_role(p_user_id IN user_account.id%TYPE, p_role_id IN role.id%TYPE) IS
+        v_exists NUMBER;
     BEGIN
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo alto #7): antes,
+        -- un p_role_id inexistente dejaba pasar un ORA-02291 crudo desde
+        -- la FK. Se valida antes, igual que el resto del paquete.
+        SELECT COUNT(*) INTO v_exists FROM user_account WHERE id = p_user_id;
+        IF v_exists = 0 THEN
+            RAISE_APPLICATION_ERROR(-20031, 'No existe un usuario con id ' || p_user_id || '.');
+        END IF;
+
+        SELECT COUNT(*) INTO v_exists FROM role WHERE id = p_role_id;
+        IF v_exists = 0 THEN
+            RAISE_APPLICATION_ERROR(-20039, 'No existe un rol con id ' || p_role_id || '.');
+        END IF;
+
         BEGIN
             INSERT INTO user_role (user_id, role_id) VALUES (p_user_id, p_role_id);
         EXCEPTION
@@ -196,7 +231,21 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
 
     ------------------------------------------------------------
     PROCEDURE grant_permission(p_role_id IN role.id%TYPE, p_permission_id IN permission.id%TYPE) IS
+        v_exists NUMBER;
     BEGIN
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo alto #7): antes,
+        -- un p_role_id/p_permission_id inexistente dejaba pasar un
+        -- ORA-02291 crudo desde la FK.
+        SELECT COUNT(*) INTO v_exists FROM role WHERE id = p_role_id;
+        IF v_exists = 0 THEN
+            RAISE_APPLICATION_ERROR(-20039, 'No existe un rol con id ' || p_role_id || '.');
+        END IF;
+
+        SELECT COUNT(*) INTO v_exists FROM permission WHERE id = p_permission_id;
+        IF v_exists = 0 THEN
+            RAISE_APPLICATION_ERROR(-20039, 'No existe un permiso con id ' || p_permission_id || '.');
+        END IF;
+
         BEGIN
             INSERT INTO role_permission (role_id, permission_id) VALUES (p_role_id, p_permission_id);
         EXCEPTION
@@ -222,13 +271,18 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
     IS
         v_count NUMBER;
     BEGIN
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo alto #4): antes no
+        -- se filtraba por user_account.is_active, así que un usuario
+        -- desactivado que conservaba un rol asignado seguía autorizado.
         SELECT COUNT(*)
           INTO v_count
           FROM user_role ur
           JOIN role_permission rp ON rp.role_id = ur.role_id
           JOIN permission p       ON p.id = rp.permission_id
+          JOIN user_account ua    ON ua.id = ur.user_id
          WHERE ur.user_id = p_user_id
-           AND p.code = p_permission_code;
+           AND p.code = p_permission_code
+           AND ua.is_active = 'Y';
 
         RETURN v_count > 0;
     END has_permission;

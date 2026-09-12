@@ -258,6 +258,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_inventory AS
         v_reverse_type   inventory_movement.movement_type%TYPE;
         v_current_qty    NUMBER;
         v_new_id         inventory_movement.id%TYPE;
+        v_already_rev    NUMBER;
     BEGIN
         BEGIN
             SELECT company_id, item_id, quantity, unit_cost, movement_type
@@ -268,6 +269,19 @@ CREATE OR REPLACE PACKAGE BODY pkg_inventory AS
             WHEN NO_DATA_FOUND THEN
                 RAISE_APPLICATION_ERROR(-20057, 'No existe un movimiento con id ' || p_movement_id || '.');
         END;
+
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo alto #7): sin este
+        -- chequeo, reversar el mismo movimiento dos veces generaba dos
+        -- movimientos contrarios en vez de uno. -20063 queda fuera del
+        -- rango original de este paquete (-20050 a -20059, ya completo)
+        -- porque se agregó después.
+        SELECT COUNT(*) INTO v_already_rev
+          FROM inventory_movement
+         WHERE reverses_movement_id = p_movement_id;
+
+        IF v_already_rev > 0 THEN
+            RAISE_APPLICATION_ERROR(-20063, 'El movimiento ' || p_movement_id || ' ya fue reversado anteriormente.');
+        END IF;
 
         v_reverse_type := CASE v_movement_type
             WHEN 'PURCHASE'        THEN 'PURCHASE_RETURN'
@@ -297,9 +311,9 @@ CREATE OR REPLACE PACKAGE BODY pkg_inventory AS
             END IF;
         END IF;
 
-        INSERT INTO inventory_movement (company_id, item_id, journal_entry_id, movement_date, movement_type, quantity, unit_cost, description)
+        INSERT INTO inventory_movement (company_id, item_id, journal_entry_id, movement_date, movement_type, quantity, unit_cost, description, reverses_movement_id)
         VALUES (v_company_id, v_item_id, p_journal_entry_id, p_movement_date, v_reverse_type, v_quantity, v_unit_cost,
-                'Reverso del movimiento ' || p_movement_id)
+                'Reverso del movimiento ' || p_movement_id, p_movement_id)
         RETURNING id INTO v_new_id;
 
         RETURN v_new_id;

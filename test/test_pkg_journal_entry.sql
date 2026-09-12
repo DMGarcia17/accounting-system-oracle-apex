@@ -557,9 +557,11 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO A: discard_draft sobre un DRAFT con un inventory_movement
-    -- vinculado por journal_entry_id -- no hay manejo amigable de la
-    -- violación de integridad referencial (ORA-02292 crudo).
+    -- REGRESIÓN (antes "Hallazgo A", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo alto #6): discard_draft sobre un DRAFT
+    -- con un inventory_movement vinculado por journal_entry_id ahora
+    -- rechaza con un error de negocio propio (-20009) en vez de dejar
+    -- pasar el ORA-02292 crudo de la FK.
     ------------------------------------------------------------------
     DECLARE
         v_tmp_entry journal_entry.id%TYPE;
@@ -567,7 +569,7 @@ BEGIN
         v_mov_id2   inventory_movement.id%TYPE;
     BEGIN
         v_tmp_entry := pkg_journal_entry.create_header(
-            v_company_id, v_period_id, DATE '2026-04-14', 'Hallazgo A: draft con movimiento de Kardex vinculado', v_user_id);
+            v_company_id, v_period_id, DATE '2026-04-14', 'Regresión: draft con movimiento de Kardex vinculado', v_user_id);
         COMMIT;
 
         INSERT INTO inventory_item (company_id, code, name, unit_of_measure)
@@ -579,19 +581,15 @@ BEGIN
         COMMIT;
 
         pkg_journal_entry.discard_draft(v_tmp_entry);
-        report('Hallazgo A: discard_draft con movimiento de Kardex vinculado', FALSE,
-               'se esperaba ORA-02292 y no lanzó ninguna excepción');
+        report('Regresión: discard_draft con movimiento de Kardex vinculado', FALSE,
+               'se esperaba -20009 y no lanzó ninguna excepción');
         ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo A: discard_draft con Kardex vinculado deja pasar ORA-02292 sin traducir a error de negocio',
-                   SQLCODE = -2292, SQLERRM);
-            -- limpieza puntual: discard_draft falló entero (nada se
-            -- borró), así que primero quitamos el movimiento de Kardex
-            -- que bloquea la FK, y recién ahí sí podemos descartar el
-            -- DRAFT -- si no, queda huérfano con entry_number NULL y
-            -- rompe cualquier create_header posterior de esta empresa
-            -- (ver HALLAZGO D).
+            report('Regresión: discard_draft con Kardex vinculado rechaza con error de negocio propio',
+                   SQLCODE = -20009, SQLERRM);
+            -- limpieza: quitamos el movimiento de Kardex que bloquea la
+            -- FK, y recién ahí sí podemos descartar el DRAFT.
             DELETE FROM inventory_movement WHERE id = v_mov_id2;
             COMMIT;
             pkg_journal_entry.discard_draft(v_tmp_entry);

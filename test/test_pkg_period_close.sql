@@ -253,21 +253,20 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- ESCENARIO 7: estimate_period_result con período inexistente --
-    -- NO tiene manejo de NO_DATA_FOUND (a diferencia del resto del
-    -- sistema), así que se espera el error crudo de Oracle (SQLCODE=100),
-    -- no un RAISE_APPLICATION_ERROR amigable.
+    -- ESCENARIO 7 / REGRESIÓN (antes propagaba NO_DATA_FOUND crudo, ya
+    -- corregido -- ver test/HALLAZGOS.md hallazgo alto #8): ahora
+    -- traduce a -20040, igual que close_period/open_period.
     ------------------------------------------------------------------
     DECLARE
         v_dummy NUMBER;
     BEGIN
         v_dummy := pkg_period_close.estimate_period_result(-999999, v_acc_purchases);
-        report('Escenario 7: estimate_period_result con período inexistente', FALSE, 'no lanzó excepción');
+        report('Escenario 7: rechazar estimate_period_result con período inexistente', FALSE, 'no lanzó excepción');
         ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo: estimate_period_result con período inexistente propaga NO_DATA_FOUND crudo (sin RAISE_APPLICATION_ERROR)',
-                   SQLCODE = 100, SQLERRM);
+            report('Escenario 7: rechazar estimate_period_result con período inexistente',
+                   SQLCODE = -20040, SQLERRM);
             ROLLBACK;
     END;
 
@@ -289,40 +288,26 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO E: close_period no valida que las cuentas recibidas
-    -- correspondan al account_type esperado -- acá se le pasa una
-    -- cuenta de GASTO (EXPENSE) como si fuera la cuenta de Inventarios,
-    -- y no hay ninguna validación semántica que lo impida.
+    -- REGRESIÓN (antes "Hallazgo E", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo alto #9): close_period ahora valida
+    -- el account_type de las 3 cuentas recibidas. Acá se le sigue
+    -- pasando una cuenta EXPENSE como si fuera la de Inventarios
+    -- (debe ser ASSET), y ahora debe rechazarlo con -20043.
     ------------------------------------------------------------------
-    DECLARE
-        v_entry_close   journal_entry.id%TYPE;
-        v_amount_used   journal_entry_line.amount%TYPE;
     BEGIN
-        v_entry_id := pkg_journal_entry.create_header(v_company_id, v_period_wrongtype, DATE '2027-02-01', 'Compra (Hallazgo E)', v_user_id);
+        v_entry_id := pkg_journal_entry.create_header(v_company_id, v_period_wrongtype, DATE '2027-02-01', 'Compra (regresión account_type)', v_user_id);
         pkg_journal_entry.add_line(v_entry_id, v_acc_purchases, 'D', 200);
         pkg_journal_entry.add_line(v_entry_id, v_acc_cash, 'C', 200);
         pkg_journal_entry.post_entry(v_entry_id);
         COMMIT;
 
         pkg_period_close.close_period(v_period_wrongtype, 50, v_acc_expense, v_acc_purchases, v_acc_retained, v_user_id);
-        COMMIT;
-
-        -- Se busca por entry_type + la línea sobre la cuenta EXPENSE en
-        -- vez de por texto de descripción, para no depender de que el
-        -- acento de "período" viaje byte a byte igual entre el cliente
-        -- sqlplus y el literal compilado en el paquete.
-        SELECT amount INTO v_amount_used
-          FROM journal_entry_line l
-          JOIN journal_entry e ON e.id = l.journal_entry_id
-         WHERE e.company_id = v_company_id AND e.period_id = v_period_wrongtype
-           AND e.entry_type = 'CLOSING' AND l.account_id = v_acc_expense AND l.movement_type = 'D';
-
-        report('Hallazgo E: close_period acepta una cuenta EXPENSE como si fuera la cuenta de Inventarios (sin validar account_type)',
-               v_amount_used = 50,
-               'se contabilizó el "inventario final" en una cuenta de tipo EXPENSE sin ningún error');
+        report('Regresión: close_period rechaza una cuenta EXPENSE como cuenta de Inventarios', FALSE, 'no lanzó excepción');
+        ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo E: close_period con cuenta de tipo incorrecto como inventario', FALSE, SQLERRM);
+            report('Regresión: close_period rechaza una cuenta EXPENSE como cuenta de Inventarios',
+                   SQLCODE = -20043, SQLERRM);
             ROLLBACK;
     END;
 

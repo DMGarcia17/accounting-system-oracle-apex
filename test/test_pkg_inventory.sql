@@ -381,40 +381,26 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO: reverse_movement no impide reversar el MISMO
-    -- movimiento dos veces (no existe columna is_reversed / reversed_by
-    -- en inventory_movement que lo bloquee). Si hay existencia
-    -- suficiente, la segunda llamada también se ejecuta sin error --
-    -- eso es justo lo que confirmamos acá.
+    -- REGRESIÓN (antes "Hallazgo", ya corregido -- ver test/HALLAZGOS.md
+    -- hallazgo alto #7): reverse_movement ahora rechaza reversar el
+    -- MISMO movimiento dos veces, usando inventory_movement.reverses_movement_id
+    -- (db/23_alter_inventory_movement_reversal.sql) para detectarlo.
+    -- Esta compra ya fue reversada en el Escenario 18; el segundo
+    -- intento debe fallar con -20063.
     ------------------------------------------------------------------
     DECLARE
-        v_purchase_id    inventory_movement.id%TYPE;
-        v_reversal_id    inventory_movement.id%TYPE;
-        v_bug_confirmado BOOLEAN := FALSE;
+        v_purchase_id inventory_movement.id%TYPE;
+        v_reversal_id inventory_movement.id%TYPE;
     BEGIN
         SELECT id INTO v_purchase_id FROM inventory_movement
          WHERE item_id = v_item_id AND movement_type = 'PURCHASE' AND ROWNUM = 1;
 
-        -- Esta compra YA fue reversada en el Escenario 18. La volvemos
-        -- a reversar para confirmar que no hay protección contra el
-        -- doble reverso.
-        BEGIN
-            v_reversal_id := pkg_inventory.reverse_movement(v_purchase_id, DATE '2026-01-09');
-            COMMIT;
-            v_bug_confirmado := TRUE;
-        EXCEPTION
-            WHEN OTHERS THEN
-                v_bug_confirmado := FALSE;
-                ROLLBACK;
-        END;
-
-        report('Hallazgo: reverse_movement permite reversar el mismo movimiento más de una vez',
-               v_bug_confirmado,
-               CASE WHEN v_bug_confirmado THEN 'confirmado: el segundo reverso se ejecutó sin error'
-                    ELSE 'no se pudo reproducir en este dataset (probablemente falló por -20059)' END);
+        v_reversal_id := pkg_inventory.reverse_movement(v_purchase_id, DATE '2026-01-09');
+        report('Regresión: reverse_movement rechaza reversar el mismo movimiento dos veces', FALSE, 'no lanzó excepción');
+        ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo: reverse_movement permite reversar el mismo movimiento más de una vez', FALSE, SQLERRM);
+            report('Regresión: reverse_movement rechaza reversar el mismo movimiento dos veces', SQLCODE = -20063, SQLERRM);
             ROLLBACK;
     END;
 

@@ -55,6 +55,42 @@ CREATE OR REPLACE PACKAGE BODY pkg_period_close AS
         END IF;
 
         ------------------------------------------------------------
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo alto #9): antes se
+        -- aceptaba cualquier cuenta como inventario/compras/resultados
+        -- acumulados sin validar su account_type (ej. una cuenta EXPENSE
+        -- pasada como "cuenta de inventario"). Si el id no existe, se
+        -- deja pasar sin error acá -- add_line() más abajo ya lo va a
+        -- rechazar con su propio mensaje (-20015).
+        ------------------------------------------------------------
+        DECLARE
+            v_check_type gl_account.account_type%TYPE;
+        BEGIN
+            BEGIN
+                SELECT account_type INTO v_check_type FROM gl_account WHERE id = p_inventory_account_id;
+                IF v_check_type <> 'ASSET' THEN
+                    RAISE_APPLICATION_ERROR(-20043,
+                        'La cuenta de inventario (id ' || p_inventory_account_id || ') debe ser de tipo ASSET, es ' || v_check_type || '.');
+                END IF;
+            EXCEPTION WHEN NO_DATA_FOUND THEN NULL; END;
+
+            BEGIN
+                SELECT account_type INTO v_check_type FROM gl_account WHERE id = p_purchases_account_id;
+                IF v_check_type <> 'COST' THEN
+                    RAISE_APPLICATION_ERROR(-20043,
+                        'La cuenta de compras (id ' || p_purchases_account_id || ') debe ser de tipo COST, es ' || v_check_type || '.');
+                END IF;
+            EXCEPTION WHEN NO_DATA_FOUND THEN NULL; END;
+
+            BEGIN
+                SELECT account_type INTO v_check_type FROM gl_account WHERE id = p_retained_earnings_account_id;
+                IF v_check_type <> 'EQUITY' THEN
+                    RAISE_APPLICATION_ERROR(-20043,
+                        'La cuenta de resultados acumulados (id ' || p_retained_earnings_account_id || ') debe ser de tipo EQUITY, es ' || v_check_type || '.');
+                END IF;
+            EXCEPTION WHEN NO_DATA_FOUND THEN NULL; END;
+        END;
+
+        ------------------------------------------------------------
         -- 2) Asiento de cierre de inventario: Debe Inventarios,
         --    Haber Compras -- esto es lo que convierte a Compras en
         --    Costo de Ventas (Inv. Inicial + Compras - Inv. Final).
@@ -230,7 +266,12 @@ CREATE OR REPLACE PACKAGE BODY pkg_period_close AS
         v_revenue_balance       NUMBER;
         v_expense_balance       NUMBER;
     BEGIN
-        SELECT company_id INTO v_company_id FROM accounting_period WHERE id = p_period_id;
+        BEGIN
+            SELECT company_id INTO v_company_id FROM accounting_period WHERE id = p_period_id;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(-20040, 'No existe un período con id ' || p_period_id || '.');
+        END;
 
         SELECT NVL(period_balance, 0) INTO v_purchases_balance
           FROM vw_account_balance

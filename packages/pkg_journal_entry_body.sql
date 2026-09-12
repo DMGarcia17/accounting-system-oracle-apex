@@ -229,6 +229,25 @@ CREATE OR REPLACE PACKAGE BODY pkg_journal_entry AS
                 'Solo se pueden descartar asientos en borrador. Este ya fue posteado o reversado.');
         END IF;
 
+        -- CORRECCIÓN (ver test/HALLAZGOS.md, hallazgo alto #6): si un
+        -- inventory_movement quedó vinculado a este DRAFT (Kardex ligado
+        -- a un asiento aún no posteado), el DELETE de abajo revienta con
+        -- un ORA-02292 crudo. Se valida antes y se traduce a un error de
+        -- negocio propio.
+        DECLARE
+            v_linked_movements NUMBER;
+        BEGIN
+            SELECT COUNT(*) INTO v_linked_movements
+              FROM inventory_movement
+             WHERE journal_entry_id = p_entry_id;
+
+            IF v_linked_movements > 0 THEN
+                RAISE_APPLICATION_ERROR(-20009,
+                    'No se puede descartar: tiene ' || v_linked_movements ||
+                    ' movimiento(s) de inventario vinculado(s). Desvinculalos o eliminalos primero.');
+            END IF;
+        END;
+
         DELETE FROM journal_entry_line WHERE journal_entry_id = p_entry_id;
         DELETE FROM journal_entry WHERE id = p_entry_id;
     END discard_draft;

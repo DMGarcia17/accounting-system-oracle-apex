@@ -10,13 +10,14 @@ reprodujo con evidencia real (mensaje de error / valores observados).
 scripts de `test/`, **0 fallos** (cada uno confirmó exactamente lo que debía
 confirmar, sea un comportamiento correcto o un bug).
 
-**Actualización (2026-09-11): los 3 críticos ya fueron corregidos** y
-verificados en vivo contra la misma base; los escenarios que los exponían se
-reescribieron como regresiones (ahora esperan el comportamiento correcto, no
-el bug). Detalle de cada corrección en la sección
-[✅ Críticos corregidos](#-críticos-corregidos) más abajo. El resto de esta
-bitácora (Altos/Medios/Riesgos/Notas) sigue reflejando el estado original de
-la sesión de pruebas y sigue pendiente.
+**Actualización (2026-09-11): los 3 críticos y los 7 altos ya fueron
+corregidos** y verificados en vivo contra la misma base; los escenarios que
+los exponían se reescribieron como regresiones (ahora esperan el
+comportamiento correcto, no el bug). Detalle de cada corrección en
+[✅ Críticos corregidos](#-críticos-corregidos) y
+[✅ Altos corregidos](#-altos-corregidos) más abajo. Los 8 🟡 Medios y los
+riesgos de concurrencia siguen reflejando el estado original de la sesión de
+pruebas y siguen pendientes.
 
 Convención de severidad: 🔴 Crítico (rompe un flujo real u otro objeto
 documentado) · 🟠 Alto (bug de validación/seguridad real) · 🟡 Medio (diseño
@@ -166,7 +167,70 @@ sin prueba ejecutada (concurrencia) · ℹ️ Nota de entorno (no es bug de cód
 
 ---
 
-## 🟠 Altos
+## ✅ Altos corregidos
+
+### 4. `has_permission` no filtraba por `user_account.is_active` — CORREGIDO
+- **Fix aplicado**: `packages/pkg_user_security_body.sql`, `has_permission` —
+  se agregó `JOIN user_account ua ON ua.id = ur.user_id` y
+  `AND ua.is_active = 'Y'` a la consulta.
+- **Test actualizado**: `test/test_pkg_user_security.sql` ("Hallazgo L" →
+  regresión que exige `FALSE` para un usuario desactivado).
+
+### 5. `create_user` / `change_password` / `reset_password` aceptaban password `NULL` sin error — CORREGIDO
+- **Fix aplicado**: `packages/pkg_user_security_body.sql` — nueva función
+  privada `validate_password` (rechaza `NULL` o menos de 4 caracteres con
+  `-20038`), invocada en las 3 funciones antes de calcular el hash.
+- **Tests actualizados**: `test/test_pkg_user_security.sql` ("Hallazgo J" y
+  "Hallazgo K" → regresiones que exigen `-20038`).
+
+### 6. `discard_draft` con un `inventory_movement` vinculado dejaba pasar `ORA-02292` crudo — CORREGIDO
+- **Fix aplicado**: `packages/pkg_journal_entry_body.sql`, `discard_draft` —
+  se valida `SELECT COUNT(*) FROM inventory_movement WHERE journal_entry_id
+  = p_entry_id` antes del `DELETE`, y se traduce a `-20009` si hay
+  movimientos vinculados.
+- **Test actualizado**: `test/test_pkg_journal_entry.sql` ("Hallazgo A" →
+  regresión que exige `-20009`).
+
+### 7. `assign_role` / `grant_permission` con id inexistente propagaban `ORA-02291` crudo — CORREGIDO
+- **Fix aplicado**: `packages/pkg_user_security_body.sql` — ambas funciones
+  ahora validan la existencia de `p_role_id`/`p_permission_id` (y
+  `assign_role` también `p_user_id`) antes del `INSERT`, con `-20039` para
+  la referencia inexistente (y se reutiliza `-20031` para el usuario, igual
+  que el resto del paquete).
+- **Test actualizado**: `test/test_pkg_user_security.sql` ("Hallazgo N" →
+  regresión que exige `-20039`).
+
+### 8. `estimate_period_result` con período inexistente propagaba `NO_DATA_FOUND` crudo — CORREGIDO
+- **Fix aplicado**: `packages/pkg_period_close_body.sql`,
+  `estimate_period_result` — se envolvió el primer `SELECT` en
+  `BEGIN...EXCEPTION WHEN NO_DATA_FOUND THEN RAISE_APPLICATION_ERROR(-20040,
+  ...)`, igual que `close_period`/`open_period`.
+- **Test actualizado**: `test/test_pkg_period_close.sql` (Escenario 7, ahora
+  exige `-20040`).
+
+### 9. `close_period` no validaba el `account_type` de las cuentas recibidas — CORREGIDO
+- **Fix aplicado**: `packages/pkg_period_close_body.sql`, `close_period` —
+  se agregó una validación explícita (`-20043`) de que
+  `p_inventory_account_id` sea `ASSET`, `p_purchases_account_id` sea `COST`,
+  y `p_retained_earnings_account_id` sea `EQUITY`. Si el id no existe, no
+  se reporta acá (queda igual que antes, delegado a `add_line`'s `-20015`).
+- **Test actualizado**: `test/test_pkg_period_close.sql` ("Hallazgo E" →
+  regresión que exige `-20043`).
+
+### 10. `pkg_inventory.reverse_movement` permitía reversar el mismo movimiento más de una vez — CORREGIDO
+- **Fix aplicado**: `db/23_alter_inventory_movement_reversal.sql` (nueva
+  columna `inventory_movement.reverses_movement_id`, mismo patrón que
+  `journal_entry.reverses_entry_id`) + `packages/pkg_inventory_body.sql`,
+  `reverse_movement` — valida `SELECT COUNT(*) FROM inventory_movement
+  WHERE reverses_movement_id = p_movement_id` antes de insertar, y rechaza
+  con `-20063` si ya fue reversado (código fuera del rango original
+  -20050/-20059 del paquete, que ya estaba completo).
+- **Test actualizado**: `test/test_pkg_inventory.sql` ("Hallazgo" → regresión
+  que exige `-20063`).
+
+---
+
+## 🟠 Altos (histórico — ya corregidos arriba)
 
 ### 4. `has_permission` no filtra por `user_account.is_active`
 - **Objeto**: `pkg_user_security.has_permission`.
@@ -383,11 +447,12 @@ contó **100** líneas `[PASS]` y **0** `[FAIL]` en total.
 
 ## Pendiente para la próxima sesión (a corregir, no solo documentar)
 
-Los 3 🔴 críticos ya se corrigieron (ver
-[✅ Críticos corregidos](#-críticos-corregidos)). Orden sugerido para lo que
-queda:
+Los 3 🔴 críticos y los 7 🟠 altos ya se corrigieron (ver
+[✅ Críticos corregidos](#-críticos-corregidos) y
+[✅ Altos corregidos](#-altos-corregidos)). Lo que queda:
 
-1. Los 7 hallazgos 🟠 altos (uno por uno son cambios chicos y localizados).
-2. Evaluar los 🟡 medios — varios son decisiones de producto pendientes
+1. Evaluar los 8 🟡 medios — varios son decisiones de producto pendientes
    (¿se permite reversar un REVERSAL? ¿reverso retroactivo?) más que bugs
    puros; conviene decidir el comportamiento deseado antes de "corregir".
+2. Los 3 riesgos de concurrencia ⚪ siguen solo documentados, sin prueba
+   ejecutada (decisión tomada al inicio de la sesión de pruebas).

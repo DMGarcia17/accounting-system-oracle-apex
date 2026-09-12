@@ -301,54 +301,41 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO J: create_user con p_password NULL no lanza ningún
-    -- error, y ese usuario luego autentica con password NULL (el
-    -- hash termina calculado solo sobre la sal).
+    -- REGRESIÓN (antes "Hallazgo J", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo alto #5): create_user con
+    -- p_password NULL ahora rechaza con -20038.
     ------------------------------------------------------------------
     BEGIN
         v_user_null_id := pkg_user_security.create_user(
             v_company_id, 'test.nullpwd.' || v_company_id, 'Usuario Password Nulo', 'nullpwd@example.com', NULL);
-        COMMIT;
-
-        report('Hallazgo J: create_user con p_password NULL no lanza error (falta validar password vacío)',
-               v_user_null_id IS NOT NULL);
-
-        IF pkg_user_security.authenticate('test.nullpwd.' || v_company_id, NULL) THEN
-            report('Hallazgo J (cont.): un usuario creado con password NULL autentica con password NULL', TRUE);
-        ELSE
-            report('Hallazgo J (cont.): un usuario creado con password NULL autentica con password NULL', FALSE,
-                   'no se pudo reproducir en este entorno');
-        END IF;
+        report('Regresión: create_user rechaza p_password NULL', FALSE, 'no lanzó excepción');
+        ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo J: create_user con p_password NULL', FALSE, SQLERRM);
+            report('Regresión: create_user rechaza p_password NULL', SQLCODE = -20038, SQLERRM);
             ROLLBACK;
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO K: reset_password con p_new_password NULL tampoco
-    -- lanza ningún error.
+    -- REGRESIÓN (antes "Hallazgo K", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo alto #5): reset_password con
+    -- p_new_password NULL ahora rechaza con -20038.
     ------------------------------------------------------------------
     BEGIN
         pkg_user_security.reset_password(v_user_id, NULL);
-        COMMIT;
-
-        IF pkg_user_security.authenticate('test.user.' || v_company_id, NULL) THEN
-            report('Hallazgo K: reset_password con p_new_password NULL deja el usuario autenticable con password NULL', TRUE);
-        ELSE
-            report('Hallazgo K: reset_password con p_new_password NULL deja el usuario autenticable con password NULL', FALSE,
-                   'no se pudo reproducir en este entorno');
-        END IF;
+        report('Regresión: reset_password rechaza p_new_password NULL', FALSE, 'no lanzó excepción');
+        ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo K: reset_password con p_new_password NULL', FALSE, SQLERRM);
+            report('Regresión: reset_password rechaza p_new_password NULL', SQLCODE = -20038, SQLERRM);
             ROLLBACK;
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO L: has_permission de un usuario DESACTIVADO que
-    -- conserva el rol asignado sigue devolviendo TRUE -- has_permission
-    -- no filtra por user_account.is_active.
+    -- REGRESIÓN (antes "Hallazgo L", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo alto #4): has_permission de un
+    -- usuario DESACTIVADO que conserva el rol asignado ahora debe
+    -- devolver FALSE.
     ------------------------------------------------------------------
     DECLARE
         v_code permission.code%TYPE;
@@ -362,18 +349,14 @@ BEGIN
         pkg_user_security.deactivate_user(v_user_id);
         COMMIT;
 
-        IF pkg_user_security.has_permission(v_user_id, v_code) THEN
-            report('Hallazgo L: has_permission sigue devolviendo TRUE para un usuario desactivado (no filtra por is_active)', TRUE);
-        ELSE
-            report('Hallazgo L: has_permission sigue devolviendo TRUE para un usuario desactivado', FALSE,
-                   'no se pudo reproducir -- has_permission SÍ rechazó al usuario inactivo');
-        END IF;
+        report('Regresión: has_permission devuelve FALSE para un usuario desactivado',
+               NOT pkg_user_security.has_permission(v_user_id, v_code));
 
         pkg_user_security.reactivate_user(v_user_id);
         COMMIT;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo L: has_permission de un usuario desactivado', FALSE, SQLERRM);
+            report('Regresión: has_permission de un usuario desactivado', FALSE, SQLERRM);
             ROLLBACK;
     END;
 
@@ -395,30 +378,30 @@ BEGIN
     END;
 
     ------------------------------------------------------------------
-    -- HALLAZGO N: assign_role / grant_permission con un id inexistente
-    -- del "otro lado" de la FK no tienen validación propia -- se
-    -- espera el error crudo de integridad referencial de Oracle
-    -- (ORA-02291), no un RAISE_APPLICATION_ERROR amigable.
+    -- REGRESIÓN (antes "Hallazgo N", ya corregido -- ver
+    -- test/HALLAZGOS.md hallazgo alto #7): assign_role / grant_permission
+    -- con un id inexistente del "otro lado" de la FK ahora rechazan con
+    -- -20039 (validación propia) en vez del ORA-02291 crudo de Oracle.
     ------------------------------------------------------------------
     BEGIN
         pkg_user_security.assign_role(v_user_id, -999999);
-        report('Hallazgo N (assign_role): rechazar rol inexistente', FALSE, 'no lanzó excepción');
+        report('Regresión (assign_role): rechazar rol inexistente', FALSE, 'no lanzó excepción');
         ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo N (assign_role): con rol inexistente propaga ORA-02291 crudo (sin validación propia)',
-                   SQLCODE = -2291, SQLERRM);
+            report('Regresión (assign_role): rechaza rol inexistente con validación propia',
+                   SQLCODE = -20039, SQLERRM);
             ROLLBACK;
     END;
 
     BEGIN
         pkg_user_security.grant_permission(-999999, v_perm_id);
-        report('Hallazgo N (grant_permission): rechazar rol inexistente', FALSE, 'no lanzó excepción');
+        report('Regresión (grant_permission): rechazar rol inexistente', FALSE, 'no lanzó excepción');
         ROLLBACK;
     EXCEPTION
         WHEN OTHERS THEN
-            report('Hallazgo N (grant_permission): con rol inexistente propaga ORA-02291 crudo (sin validación propia)',
-                   SQLCODE = -2291, SQLERRM);
+            report('Regresión (grant_permission): rechaza rol inexistente con validación propia',
+                   SQLCODE = -20039, SQLERRM);
             ROLLBACK;
     END;
 
