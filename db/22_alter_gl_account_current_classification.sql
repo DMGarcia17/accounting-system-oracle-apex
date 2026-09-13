@@ -21,11 +21,20 @@ ALTER TABLE gl_account ADD (
 -- FALSE -- así que un ASSET/LIABILITY con is_current NULL se aceptaba
 -- sin error, contradiciendo la intención documentada arriba. Se agrega
 -- `IS NOT NULL` explícito en esa rama.
+--
+-- AJUSTE (al cargar el catálogo de cuentas real de la docente, con
+-- jerarquía profunda): la exigencia de Y/N solo tiene sentido en
+-- cuentas de DETALLE (is_posting_account='Y') -- una cuenta ASSET/
+-- LIABILITY que es puramente de agrupación (ej. la raíz "1 ACTIVO",
+-- que agrupa tanto Corriente como No Corriente) no puede clasificarse
+-- honestamente como una sola cosa. Para esas se permite NULL también.
 ALTER TABLE gl_account ADD CONSTRAINT ck_gl_account_is_current CHECK (
-    (account_type IN ('ASSET','LIABILITY') AND is_current IS NOT NULL AND is_current IN ('Y','N'))
+    (account_type IN ('ASSET','LIABILITY') AND is_posting_account = 'Y' AND is_current IS NOT NULL AND is_current IN ('Y','N'))
+    OR
+    (account_type IN ('ASSET','LIABILITY') AND is_posting_account = 'N' AND is_current IS NULL)
     OR
     (account_type NOT IN ('ASSET','LIABILITY') AND is_current IS NULL)
 );
 
 COMMENT ON COLUMN gl_account.is_current IS
-    'Solo para ASSET/LIABILITY: Y=Corriente, N=No Corriente. NULL para el resto de los tipos de cuenta.';
+    'Solo para ASSET/LIABILITY de detalle (is_posting_account=Y): Y=Corriente, N=No Corriente. NULL para el resto (incluidas las cuentas de agrupación ASSET/LIABILITY).';

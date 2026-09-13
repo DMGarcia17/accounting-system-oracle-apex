@@ -102,8 +102,8 @@ BEGIN
     DECLARE
         v_parent_account gl_account.id%TYPE;
     BEGIN
-        INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account, is_current)
-            VALUES (v_company_id, 'TEST-PARENT', 'Cuenta padre (prueba)', 'D', 'ASSET', 'N', 'Y')
+        INSERT INTO gl_account (company_id, code, name, normal_balance, account_type, is_posting_account)
+            VALUES (v_company_id, 'TEST-PARENT', 'Cuenta padre (prueba)', 'D', 'ASSET', 'N')
             RETURNING id INTO v_parent_account;
         COMMIT;
 

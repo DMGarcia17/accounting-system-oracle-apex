@@ -149,11 +149,16 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
         v_salt     user_account.password_salt%TYPE;
         v_active   user_account.is_active%TYPE;
     BEGIN
+        -- Comparación insensible a mayúsculas/minúsculas: el item de
+        -- username en la página de login de APEX fuerza mayúsculas
+        -- (herencia de convención estilo Oracle Forms), así que un
+        -- usuario creado como 'test' llega acá como 'TEST'.
         BEGIN
             SELECT id, password_hash, password_salt, is_active
               INTO v_id, v_hash, v_salt, v_active
               FROM user_account
-             WHERE username = p_username;
+             WHERE UPPER(username) = UPPER(p_username)
+             FETCH FIRST 1 ROW ONLY;
         EXCEPTION
             WHEN NO_DATA_FOUND THEN
                 RETURN FALSE;  -- no revelar si el usuario existe o no
@@ -300,9 +305,13 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
         v_user_id    user_account.id%TYPE;
         v_company_id user_account.company_id%TYPE;
     BEGIN
+        -- Mismo criterio insensible a mayúsculas/minúsculas que authenticate():
+        -- :APP_USER llega aquí como lo dejó el login (ej. 'TEST'), no
+        -- necesariamente igual al username guardado (ej. 'test').
         SELECT id, company_id INTO v_user_id, v_company_id
           FROM user_account
-         WHERE username = p_username;
+         WHERE UPPER(username) = UPPER(p_username)
+         FETCH FIRST 1 ROW ONLY;
 
         apex_util.set_session_state('G_USER_ID', v_user_id);
         apex_util.set_session_state('G_COMPANY_ID', v_company_id);
@@ -310,6 +319,20 @@ CREATE OR REPLACE PACKAGE BODY pkg_user_security AS
         WHEN NO_DATA_FOUND THEN
             RAISE_APPLICATION_ERROR(-20037, 'No existe un usuario con username "' || p_username || '".');
     END set_session_context;
+
+
+    ------------------------------------------------------------
+    -- CORRECCIÓN: el campo "Post-Authentication Procedure Name" del
+    -- esquema de autenticación de APEX valida el valor con DBMS_ASSERT
+    -- antes de ejecutarlo -- solo acepta un nombre cualificado simple,
+    -- sin paréntesis ni parámetros (ORA-44004 si se le pasan). Por eso
+    -- este wrapper sin parámetros: V('APP_USER') lee el usuario que
+    -- APEX ya dejó en sesión tras un login exitoso.
+    ------------------------------------------------------------
+    PROCEDURE post_authentication_hook IS
+    BEGIN
+        set_session_context(V('APP_USER'));
+    END post_authentication_hook;
 
 END pkg_user_security;
 /

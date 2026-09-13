@@ -71,12 +71,18 @@ CREATE OR REPLACE PACKAGE pkg_user_security AS
     ) RETURN BOOLEAN;
 
     -- Resuelve username -> user_id/company_id y los guarda en items
-    -- de sesión de APEX (G_USER_ID, G_COMPANY_ID). Pensada para ser
-    -- la ÚNICA línea que hace falta configurar del lado de APEX, en
-    -- el "Post-Authentication Procedure" del esquema de autenticación:
-    --   pkg_user_security.set_session_context(:APP_USER);
-    -- Toda la lógica de qué guardar y cómo sigue viviendo acá, no en APEX.
+    -- de sesión de APEX (G_USER_ID, G_COMPANY_ID).
     PROCEDURE set_session_context(p_username IN user_account.username%TYPE);
+
+    -- CORRECCIÓN: el campo "Post-Authentication Procedure Name" de APEX
+    -- valida el valor con DBMS_ASSERT antes de ejecutarlo, y solo acepta
+    -- un nombre cualificado simple (paquete.procedimiento) -- NO permite
+    -- pasarle parámetros entre paréntesis como se documentó originalmente
+    -- (ORA-44004 al loguearse). Por eso este wrapper sin parámetros, que
+    -- lee el usuario ya autenticado con V('APP_USER') y es el que
+    -- realmente hay que configurar ahí:
+    --   pkg_user_security.post_authentication_hook
+    PROCEDURE post_authentication_hook;
 
 END pkg_user_security;
 /
