@@ -21,6 +21,7 @@ apex_upgrade.log
 apex_export_*.log
 /exports/tmp/
 *.apex.bak
+trash/
  
 # Archivos de configuración de conexión local de SQLcl/SQL Developer
 .sqlcl_history
