@@ -117,6 +117,47 @@ CREATE OR REPLACE PACKAGE BODY pkg_journal_entry AS
 
 
     ------------------------------------------------------------
+    PROCEDURE delete_line(
+        p_entry_id IN journal_entry.id%TYPE,
+        p_line_id  IN journal_entry_line.id%TYPE
+    )
+    IS
+        v_status         journal_entry.status%TYPE;
+        v_line_entry_id  journal_entry_line.journal_entry_id%TYPE;
+    BEGIN
+        BEGIN
+            SELECT status INTO v_status
+              FROM journal_entry
+             WHERE id = p_entry_id
+               FOR UPDATE;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(-20008, 'No existe un asiento con id ' || p_entry_id || '.');
+        END;
+
+        IF v_status <> 'DRAFT' THEN
+            RAISE_APPLICATION_ERROR(-20012,
+                'No se pueden eliminar líneas de un asiento que ya fue posteado o reversado.');
+        END IF;
+
+        BEGIN
+            SELECT journal_entry_id INTO v_line_entry_id
+              FROM journal_entry_line
+             WHERE id = p_line_id;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(-20023, 'No existe una línea con id ' || p_line_id || '.');
+        END;
+
+        IF v_line_entry_id <> p_entry_id THEN
+            RAISE_APPLICATION_ERROR(-20024, 'Esa línea no pertenece al asiento indicado.');
+        END IF;
+
+        DELETE FROM journal_entry_line WHERE id = p_line_id;
+    END delete_line;
+
+
+    ------------------------------------------------------------
     PROCEDURE post_entry(p_entry_id IN journal_entry.id%TYPE)
     IS
         v_company_id        journal_entry.company_id%TYPE;

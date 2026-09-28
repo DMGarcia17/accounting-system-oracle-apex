@@ -49,6 +49,14 @@ CREATE OR REPLACE PACKAGE pkg_journal_entry AS
         p_description   IN journal_entry_line.description%TYPE DEFAULT NULL
     );
 
+    -- Elimina una línea de un asiento que sigue en DRAFT (para corregir
+    -- un error de captura antes de postear, sin tener que descartar todo
+    -- el asiento). Valida que la línea pertenezca realmente a ese asiento.
+    PROCEDURE delete_line(
+        p_entry_id IN journal_entry.id%TYPE,
+        p_line_id  IN journal_entry_line.id%TYPE
+    );
+
     -- Revalida período/cuadre con TODAS las líneas ya cargadas,
     -- asigna el correlativo, y pasa el asiento a ACTIVE.
     PROCEDURE post_entry(p_entry_id IN journal_entry.id%TYPE);
