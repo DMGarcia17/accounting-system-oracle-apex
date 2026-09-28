@@ -33,15 +33,15 @@ prompt APPLICATION 100 - Sistema Contable
 -- Application Export:
 --   Application:     100
 --   Name:            Sistema Contable
---   Date and Time:   05:00 Tuesday September 15, 2026
+--   Date and Time:   05:47 Monday September 28, 2026
 --   Exported By:     ACCADMON
 --   Flashback:       0
 --   Export Type:     Application Export
---     Pages:                      7
---       Items:                   22
+--     Pages:                      9
+--       Items:                   25
 --       Validations:              1
 --       Processes:               11
---       Regions:                 11
+--       Regions:                 15
 --       Buttons:                 10
 --       Dynamic Actions:          2
 --     Shared Components:
@@ -51,7 +51,7 @@ prompt APPLICATION 100 - Sistema Contable
 --       Navigation:
 --         Lists:                  2
 --         Breadcrumbs:            1
---           Entries:              4
+--           Entries:              5
 --       Security:
 --         Authentication:         2
 --         Authorization:          1
@@ -108,12 +108,12 @@ wwv_imp_workspace.create_flow(
 ,p_substitution_string_01=>'APP_NAME'
 ,p_substitution_value_01=>'Sistema Contable'
 ,p_created_on=>wwv_flow_imp.dz('20260912042940Z')
-,p_last_updated_on=>wwv_flow_imp.dz('20260915045219Z')
+,p_last_updated_on=>wwv_flow_imp.dz('20260928054615Z')
 ,p_created_by=>'ACCADMON'
 ,p_last_updated_by=>'ACCADMON'
 ,p_file_prefix=>nvl(wwv_flow_application_install.get_static_app_file_prefix,'')
 ,p_files_version=>2461296042942
-,p_version_scn=>'15133884'
+,p_version_scn=>'17179801'
 ,p_print_server_type=>'NATIVE'
 ,p_file_storage=>'DB'
 ,p_is_pwa=>'Y'
@@ -376,9 +376,9 @@ wwv_flow_imp_shared.create_list(
  p_id=>wwv_flow_imp.id(3228921138328777)
 ,p_name=>'Navigation Menu'
 ,p_static_id=>'navigation-menu'
-,p_version_scn=>'SH256:1CR82ZSDSpLEeCE7qgySrY6NcWBzEY_h6nTcH-c8X3E'
+,p_version_scn=>'SH256:C6UrtVDUEpwU9mqmf-bWetYYe0NU73Kx3Ti7Yi1hYx8'
 ,p_created_on=>wwv_flow_imp.dz('20260912042941Z')
-,p_updated_on=>wwv_flow_imp.dz('20260915042040Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043015Z')
 ,p_created_by=>'ACCADMON'
 ,p_updated_by=>'ACCADMON'
 );
@@ -406,6 +406,20 @@ wwv_flow_imp_shared.create_list_item(
 ,p_list_item_current_type=>'TARGET_PAGE'
 ,p_created_on=>wwv_flow_imp.dz('20260912042942Z')
 ,p_updated_on=>wwv_flow_imp.dz('20260912042942Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_shared.create_list_item(
+ p_id=>wwv_flow_imp.id(4824812701045128)
+,p_list_item_display_sequence=>40
+,p_list_item_link_text=>'Libro Mayor'
+,p_static_id=>'libro-mayor'
+,p_list_item_link_target=>'f?p=&APP_ID.:6:&APP_SESSION.::&DEBUG.:::'
+,p_list_item_icon=>'fa-file-o'
+,p_list_item_current_type=>'COLON_DELIMITED_PAGE_LIST'
+,p_list_item_current_for_pages=>'6'
+,p_created_on=>wwv_flow_imp.dz('20260928043015Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043015Z')
 ,p_created_by=>'ACCADMON'
 ,p_updated_by=>'ACCADMON'
 );
@@ -1246,7 +1260,7 @@ wwv_flow_imp_shared.create_menu(
 ,p_name=>'Breadcrumb'
 ,p_static_id=>'breadcrumb'
 ,p_created_on=>wwv_flow_imp.dz('20260912042941Z')
-,p_updated_on=>wwv_flow_imp.dz('20260915032242Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043015Z')
 ,p_created_by=>'ACCADMON'
 ,p_updated_by=>'ACCADMON'
 );
@@ -1269,6 +1283,17 @@ wwv_flow_imp_shared.create_menu_option(
 ,p_page_id=>1
 ,p_created_on=>wwv_flow_imp.dz('20260912042941Z')
 ,p_updated_on=>wwv_flow_imp.dz('20260912042941Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_shared.create_menu_option(
+ p_id=>wwv_flow_imp.id(4825815097045162)
+,p_short_name=>'Libro Mayor'
+,p_static_id=>'libro-mayor'
+,p_link=>'f?p=&APP_ID.:6:&APP_SESSION.::&DEBUG.:::'
+,p_page_id=>6
+,p_created_on=>wwv_flow_imp.dz('20260928043015Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043015Z')
 ,p_created_by=>'ACCADMON'
 ,p_updated_by=>'ACCADMON'
 );
@@ -3034,6 +3059,536 @@ wwv_flow_imp_page.create_page_process(
 ,p_internal_uid=>4040386056897532
 ,p_created_on=>wwv_flow_imp.dz('20260915040557Z')
 ,p_updated_on=>wwv_flow_imp.dz('20260915040557Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+end;
+/
+prompt --application/pages/page_00006
+begin
+wwv_flow_imp_page.create_page(
+ p_id=>6
+,p_name=>'Libro Mayor'
+,p_alias=>'LIBRO-MAYOR'
+,p_step_title=>'Libro Mayor'
+,p_autocomplete_on_off=>'OFF'
+,p_step_template=>4073832297226169690
+,p_page_template_options=>'#DEFAULT#'
+,p_protection_level=>'C'
+,p_page_component_map=>'18'
+,p_created_on=>wwv_flow_imp.dz('20260928043015Z')
+,p_last_updated_on=>wwv_flow_imp.dz('20260928053608Z')
+,p_created_by=>'ACCADMON'
+,p_last_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_page_plug(
+ p_id=>wwv_flow_imp.id(4825259358045152)
+,p_plug_name=>'Breadcrumb'
+,p_static_id=>'breadcrumb'
+,p_region_template_options=>'#DEFAULT#:t-BreadcrumbRegion--useBreadcrumbTitle'
+,p_component_template_options=>'#DEFAULT#'
+,p_plug_template=>2532939663579242476
+,p_plug_display_sequence=>10
+,p_plug_display_point=>'REGION_POSITION_01'
+,p_plug_item_display_point=>'ABOVE'
+,p_menu_id=>wwv_flow_imp.id(3228494374328771)
+,p_plug_source_type=>'NATIVE_BREADCRUMB'
+,p_menu_template_id=>4073839682315169711
+,p_created_on=>wwv_flow_imp.dz('20260928043015Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043015Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_page_plug(
+ p_id=>wwv_flow_imp.id(4826227654048001)
+,p_plug_name=>'Filtros'
+,p_static_id=>'filtros'
+,p_region_template_options=>'#DEFAULT#:t-Region--scrollBody'
+,p_plug_template=>4073835273271169698
+,p_plug_display_sequence=>10
+,p_plug_item_display_point=>'ABOVE'
+,p_location=>null
+,p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2(
+  'expand_shortcuts', 'N',
+  'output_as', 'HTML')).to_clob
+,p_created_on=>wwv_flow_imp.dz('20260928043209Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043416Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_page_plug(
+ p_id=>wwv_flow_imp.id(4826411562048003)
+,p_plug_name=>'Saldos por Cuenta'
+,p_static_id=>'saldos-por-cuenta'
+,p_region_template_options=>'#DEFAULT#:t-IRR-region--hideHeader js-addHiddenHeadingRoleDesc'
+,p_plug_template=>2102002977963900996
+,p_plug_display_sequence=>20
+,p_plug_item_display_point=>'ABOVE'
+,p_query_type=>'SQL'
+,p_plug_source=>wwv_flow_string.join(wwv_flow_t_varchar2(
+'SELECT ga.id AS account_id,',
+'       ga.code,',
+'       ga.name AS cuenta,',
+'       CASE ga.account_type',
+'           WHEN ''ASSET''     THEN ''Activo''',
+'           WHEN ''LIABILITY'' THEN ''Pasivo''',
+'           WHEN ''EQUITY''    THEN ''Patrimonio''',
+'           WHEN ''REVENUE''   THEN ''Ingreso''',
+'           WHEN ''COST''      THEN ''Costo''',
+'           WHEN ''EXPENSE''   THEN ''Gasto''',
+'       END AS tipo,',
+'       vab.total_debit AS debe,',
+'       vab.total_credit AS haber,',
+'       vab.period_balance AS saldo_periodo,',
+'       vab.accumulated_balance AS saldo_acumulado',
+'  FROM vw_account_balance vab',
+'  JOIN gl_account ga ON ga.id = vab.account_id',
+' WHERE vab.company_id = :G_COMPANY_ID',
+'   AND vab.period_id = :P6_PERIOD_ID',
+' ORDER BY ga.code',
+''))
+,p_plug_source_type=>'NATIVE_IR'
+,p_prn_content_disposition=>'ATTACHMENT'
+,p_prn_units=>'MILLIMETERS'
+,p_prn_paper_size=>'A4'
+,p_prn_width=>297
+,p_prn_height=>210
+,p_prn_orientation=>'HORIZONTAL'
+,p_prn_page_header_font_color=>'#000000'
+,p_prn_page_header_font_family=>'Helvetica'
+,p_prn_page_header_font_weight=>'normal'
+,p_prn_page_header_font_size=>'12'
+,p_prn_page_footer_font_color=>'#000000'
+,p_prn_page_footer_font_family=>'Helvetica'
+,p_prn_page_footer_font_weight=>'normal'
+,p_prn_page_footer_font_size=>'12'
+,p_prn_header_bg_color=>'#EEEEEE'
+,p_prn_header_font_color=>'#000000'
+,p_prn_header_font_family=>'Helvetica'
+,p_prn_header_font_weight=>'bold'
+,p_prn_header_font_size=>'10'
+,p_prn_body_bg_color=>'#FFFFFF'
+,p_prn_body_font_color=>'#000000'
+,p_prn_body_font_family=>'Helvetica'
+,p_prn_body_font_weight=>'normal'
+,p_prn_body_font_size=>'10'
+,p_prn_border_width=>.5
+,p_prn_page_header_alignment=>'CENTER'
+,p_prn_page_footer_alignment=>'CENTER'
+,p_prn_border_color=>'#666666'
+,p_ai_enabled=>false
+,p_created_on=>wwv_flow_imp.dz('20260928043416Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053608Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet(
+ p_id=>wwv_flow_imp.id(4826546140048004)
+,p_pagination_type=>'ROWS_X_TO_Y'
+,p_pagination_display_pos=>'BOTTOM_RIGHT'
+,p_report_list_mode=>'TABS'
+,p_lazy_loading=>false
+,p_show_detail_link=>'N'
+,p_show_notify=>'Y'
+,p_download_formats=>'CSV:HTML:XLSX:PDF'
+,p_enable_mail_download=>'Y'
+,p_internal_uid=>4826546140048004
+,p_created_on=>wwv_flow_imp.dz('20260928043416Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053608Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4827311886048012)
+,p_db_column_name=>'ACCOUNT_ID'
+,p_display_order=>80
+,p_column_identifier=>'H'
+,p_column_label=>'Account Id'
+,p_column_type=>'NUMBER'
+,p_heading_alignment=>'RIGHT'
+,p_column_alignment=>'RIGHT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928052919Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928052919Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4826653846048005)
+,p_db_column_name=>'CODE'
+,p_display_order=>10
+,p_column_identifier=>'A'
+,p_column_label=>'Code'
+,p_column_link=>'f?p=&APP_ID.:7:&SESSION.::&DEBUG.::P7_ACCOUNT_ID,P7_PERIOD_ID:#ACCOUNT_ID#,&P6_PERIOD_ID.'
+,p_column_linktext=>'#CODE#'
+,p_column_type=>'STRING'
+,p_heading_alignment=>'LEFT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053608Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4826775578048006)
+,p_db_column_name=>'CUENTA'
+,p_display_order=>20
+,p_column_identifier=>'B'
+,p_column_label=>'Cuenta'
+,p_column_type=>'STRING'
+,p_heading_alignment=>'LEFT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4826971863048008)
+,p_db_column_name=>'DEBE'
+,p_display_order=>40
+,p_column_identifier=>'D'
+,p_column_label=>'Debe'
+,p_column_type=>'NUMBER'
+,p_heading_alignment=>'RIGHT'
+,p_column_alignment=>'RIGHT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4827080525048009)
+,p_db_column_name=>'HABER'
+,p_display_order=>50
+,p_column_identifier=>'E'
+,p_column_label=>'Haber'
+,p_column_type=>'NUMBER'
+,p_heading_alignment=>'RIGHT'
+,p_column_alignment=>'RIGHT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4827246141048011)
+,p_db_column_name=>'SALDO_ACUMULADO'
+,p_display_order=>70
+,p_column_identifier=>'G'
+,p_column_label=>'Saldo Acumulado'
+,p_column_type=>'NUMBER'
+,p_heading_alignment=>'RIGHT'
+,p_column_alignment=>'RIGHT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4827161541048010)
+,p_db_column_name=>'SALDO_PERIODO'
+,p_display_order=>60
+,p_column_identifier=>'F'
+,p_column_label=>'Saldo Periodo'
+,p_column_type=>'NUMBER'
+,p_heading_alignment=>'RIGHT'
+,p_column_alignment=>'RIGHT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4826872603048007)
+,p_db_column_name=>'TIPO'
+,p_display_order=>30
+,p_column_identifier=>'C'
+,p_column_label=>'Tipo'
+,p_column_type=>'STRING'
+,p_heading_alignment=>'LEFT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043417Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_rpt(
+ p_id=>wwv_flow_imp.id(4835771742074514)
+,p_application_user=>'APXWS_DEFAULT'
+,p_report_seq=>10
+,p_report_alias=>'primary'
+,p_status=>'PUBLIC'
+,p_is_default=>'Y'
+,p_report_columns=>'CODE:CUENTA:TIPO:DEBE:HABER:SALDO_PERIODO:SALDO_ACUMULADO'
+,p_created_on=>wwv_flow_imp.dz('20260928043509Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043509Z')
+,p_created_by=>'TEST'
+,p_updated_by=>'TEST'
+);
+wwv_flow_imp_page.create_page_item(
+ p_id=>wwv_flow_imp.id(4826341305048002)
+,p_name=>'P6_PERIOD_ID'
+,p_item_sequence=>10
+,p_item_plug_id=>wwv_flow_imp.id(4826227654048001)
+,p_prompt=>'Periodo'
+,p_source_type=>'ALWAYS_NULL'
+,p_display_as=>'NATIVE_SELECT_LIST'
+,p_lov=>wwv_flow_string.join(wwv_flow_t_varchar2(
+'SELECT name d, id r',
+'  FROM accounting_period',
+' WHERE company_id = :G_COMPANY_ID',
+' ORDER BY start_date DESC',
+''))
+,p_lov_display_null=>'YES'
+,p_cHeight=>1
+,p_field_template=>1610598304472262251
+,p_item_template_options=>'#DEFAULT#'
+,p_lov_display_extra=>'YES'
+,p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2(
+  'execute_validations', 'Y',
+  'page_action_on_selection', 'SUBMIT')).to_clob
+,p_created_on=>wwv_flow_imp.dz('20260928043209Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928043416Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+end;
+/
+prompt --application/pages/page_00007
+begin
+wwv_flow_imp_page.create_page(
+ p_id=>7
+,p_name=>'Movimientos de Cuenta'
+,p_alias=>'MOVIMIENTOS-DE-CUENTA'
+,p_page_mode=>'MODAL'
+,p_step_title=>'Movimientos de Cuenta'
+,p_autocomplete_on_off=>'OFF'
+,p_step_template=>2101883943284197310
+,p_page_template_options=>'#DEFAULT#'
+,p_dialog_resizable=>'Y'
+,p_protection_level=>'C'
+,p_page_component_map=>'18'
+,p_created_on=>wwv_flow_imp.dz('20260928053159Z')
+,p_last_updated_on=>wwv_flow_imp.dz('20260928054615Z')
+,p_created_by=>'ACCADMON'
+,p_last_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_page_plug(
+ p_id=>wwv_flow_imp.id(4827695032048015)
+,p_plug_name=>'Movimientos'
+,p_static_id=>'movimientos'
+,p_region_template_options=>'#DEFAULT#:t-IRR-region--hideHeader js-addHiddenHeadingRoleDesc'
+,p_plug_template=>2102002977963900996
+,p_plug_display_sequence=>30
+,p_plug_item_display_point=>'ABOVE'
+,p_query_type=>'SQL'
+,p_plug_source=>wwv_flow_string.join(wwv_flow_t_varchar2(
+'SELECT je.entry_date,',
+'       je.entry_number,',
+'       je.description AS concepto,',
+'       CASE jel.movement_type WHEN ''D'' THEN ''Debe'' ELSE ''Haber'' END AS tipo,',
+'       jel.amount AS monto,',
+'       jel.description AS detalle_linea',
+'  FROM journal_entry_line jel',
+'  JOIN journal_entry je ON je.id = jel.journal_entry_id',
+' WHERE jel.account_id = :P7_ACCOUNT_ID',
+'   AND je.period_id = :P7_PERIOD_ID',
+'   AND je.status = ''ACTIVE''',
+' ORDER BY je.entry_date, je.entry_number',
+''))
+,p_plug_source_type=>'NATIVE_IR'
+,p_prn_content_disposition=>'ATTACHMENT'
+,p_prn_units=>'MILLIMETERS'
+,p_prn_paper_size=>'A4'
+,p_prn_width=>297
+,p_prn_height=>210
+,p_prn_orientation=>'HORIZONTAL'
+,p_prn_page_header_font_color=>'#000000'
+,p_prn_page_header_font_family=>'Helvetica'
+,p_prn_page_header_font_weight=>'normal'
+,p_prn_page_header_font_size=>'12'
+,p_prn_page_footer_font_color=>'#000000'
+,p_prn_page_footer_font_family=>'Helvetica'
+,p_prn_page_footer_font_weight=>'normal'
+,p_prn_page_footer_font_size=>'12'
+,p_prn_header_bg_color=>'#EEEEEE'
+,p_prn_header_font_color=>'#000000'
+,p_prn_header_font_family=>'Helvetica'
+,p_prn_header_font_weight=>'bold'
+,p_prn_header_font_size=>'10'
+,p_prn_body_bg_color=>'#FFFFFF'
+,p_prn_body_font_color=>'#000000'
+,p_prn_body_font_family=>'Helvetica'
+,p_prn_body_font_weight=>'normal'
+,p_prn_body_font_size=>'10'
+,p_prn_border_width=>.5
+,p_prn_page_header_alignment=>'CENTER'
+,p_prn_page_footer_alignment=>'CENTER'
+,p_prn_border_color=>'#666666'
+,p_ai_enabled=>false
+,p_created_on=>wwv_flow_imp.dz('20260928053324Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928054615Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet(
+ p_id=>wwv_flow_imp.id(4827727850048016)
+,p_pagination_type=>'ROWS_X_TO_Y'
+,p_pagination_display_pos=>'BOTTOM_RIGHT'
+,p_report_list_mode=>'TABS'
+,p_lazy_loading=>false
+,p_show_detail_link=>'N'
+,p_show_notify=>'Y'
+,p_download_formats=>'CSV:HTML:XLSX:PDF'
+,p_enable_mail_download=>'Y'
+,p_internal_uid=>4827727850048016
+,p_created_on=>wwv_flow_imp.dz('20260928053324Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928054615Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4828058161048019)
+,p_db_column_name=>'CONCEPTO'
+,p_display_order=>30
+,p_column_identifier=>'C'
+,p_column_label=>'Concepto'
+,p_column_type=>'STRING'
+,p_heading_alignment=>'LEFT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928053324Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053951Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4828325608048022)
+,p_db_column_name=>'DETALLE_LINEA'
+,p_display_order=>60
+,p_column_identifier=>'F'
+,p_column_label=>'Detalle Linea'
+,p_column_type=>'STRING'
+,p_heading_alignment=>'LEFT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928053324Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053951Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4828796736048026)
+,p_db_column_name=>'ENTRY_DATE'
+,p_display_order=>10
+,p_column_identifier=>'J'
+,p_column_label=>'Fecha de Ingreso'
+,p_column_type=>'DATE'
+,p_heading_alignment=>'LEFT'
+,p_tz_dependent=>'N'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928053935Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928054615Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4828816096048027)
+,p_db_column_name=>'ENTRY_NUMBER'
+,p_display_order=>20
+,p_column_identifier=>'K'
+,p_column_label=>unistr('N\00FAmero de Asiento')
+,p_column_type=>'NUMBER'
+,p_heading_alignment=>'RIGHT'
+,p_column_alignment=>'RIGHT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928053935Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928054615Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4828295763048021)
+,p_db_column_name=>'MONTO'
+,p_display_order=>50
+,p_column_identifier=>'E'
+,p_column_label=>'Monto'
+,p_column_type=>'NUMBER'
+,p_heading_alignment=>'RIGHT'
+,p_column_alignment=>'RIGHT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928053324Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053951Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_column(
+ p_id=>wwv_flow_imp.id(4828143405048020)
+,p_db_column_name=>'TIPO'
+,p_display_order=>40
+,p_column_identifier=>'D'
+,p_column_label=>'Tipo'
+,p_column_type=>'STRING'
+,p_heading_alignment=>'LEFT'
+,p_use_as_row_header=>'N'
+,p_available_clientside=>'N'
+,p_created_on=>wwv_flow_imp.dz('20260928053324Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053951Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_worksheet_rpt(
+ p_id=>wwv_flow_imp.id(4840876364440752)
+,p_application_user=>'APXWS_DEFAULT'
+,p_report_seq=>10
+,p_report_alias=>'primary'
+,p_status=>'PUBLIC'
+,p_is_default=>'Y'
+,p_report_columns=>'CONCEPTO:TIPO:MONTO:DETALLE_LINEA'
+,p_created_on=>wwv_flow_imp.dz('20260928053611Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053935Z')
+,p_created_by=>'TEST'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_page_item(
+ p_id=>wwv_flow_imp.id(4827483023048013)
+,p_name=>'P7_ACCOUNT_ID'
+,p_item_sequence=>10
+,p_source_type=>'ALWAYS_NULL'
+,p_display_as=>'NATIVE_HIDDEN'
+,p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2(
+  'value_protected', 'Y')).to_clob
+,p_created_on=>wwv_flow_imp.dz('20260928053324Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053324Z')
+,p_created_by=>'ACCADMON'
+,p_updated_by=>'ACCADMON'
+);
+wwv_flow_imp_page.create_page_item(
+ p_id=>wwv_flow_imp.id(4827593736048014)
+,p_name=>'P7_PERIOD_ID'
+,p_item_sequence=>20
+,p_source_type=>'ALWAYS_NULL'
+,p_display_as=>'NATIVE_HIDDEN'
+,p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2(
+  'value_protected', 'Y')).to_clob
+,p_created_on=>wwv_flow_imp.dz('20260928053324Z')
+,p_updated_on=>wwv_flow_imp.dz('20260928053324Z')
 ,p_created_by=>'ACCADMON'
 ,p_updated_by=>'ACCADMON'
 );
