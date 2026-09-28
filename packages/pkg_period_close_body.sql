@@ -204,6 +204,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_period_close AS
         v_prior_period_id accounting_period.id%TYPE;
         v_beginning_inv   NUMBER;
         v_opening_entry   journal_entry.id%TYPE;
+        v_already_opened  NUMBER;
     BEGIN
         BEGIN
             SELECT company_id, start_date INTO v_company_id, v_start_date
@@ -212,6 +213,19 @@ CREATE OR REPLACE PACKAGE BODY pkg_period_close AS
             WHEN NO_DATA_FOUND THEN
                 RAISE_APPLICATION_ERROR(-20040, 'No existe un período con id ' || p_period_id || '.');
         END;
+
+        -- CORRECCIÓN: sin este chequeo, llamar open_period dos veces sobre
+        -- el mismo período duplicaba el asiento de apertura (doble carga
+        -- del inventario inicial en Compras).
+        SELECT COUNT(*) INTO v_already_opened
+          FROM journal_entry
+         WHERE period_id = p_period_id
+           AND entry_type = 'OPENING'
+           AND status = 'ACTIVE';
+
+        IF v_already_opened > 0 THEN
+            RAISE_APPLICATION_ERROR(-20041, 'Este período ya tiene un asiento de apertura posteado.');
+        END IF;
 
         BEGIN
             SELECT id INTO v_prior_period_id
